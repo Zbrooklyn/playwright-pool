@@ -1,7 +1,7 @@
 {
   "name": "@anthropic-tools/playwright-pool",
-  "version": "2.0.0",
-  "description": "MCP server that dynamically manages a pool of authenticated Playwright browser instances from a single golden profile",
+  "version": "3.0.0",
+  "description": "MCP server that wraps @playwright/mcp with pool management — golden profile auth, UUID isolation, window/tab modes",
   "type": "module",
   "bin": {
     "playwright-pool": "server.js"
@@ -29,8 +29,6 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.0",
-    "playwright": "^1.58.0",
-    "zod": "^3.23.0"
+    "playwright": "^1.58.0"
   }
 }
