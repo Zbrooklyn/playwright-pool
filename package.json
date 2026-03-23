@@ -1,0 +1,36 @@
+{
+  "name": "@anthropic-tools/playwright-pool",
+  "version": "2.0.0",
+  "description": "MCP server that dynamically manages a pool of authenticated Playwright browser instances from a single golden profile",
+  "type": "module",
+  "bin": {
+    "playwright-pool": "server.js"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "mcp",
+    "playwright",
+    "browser-pool",
+    "automation",
+    "claude",
+    "model-context-protocol",
+    "browser-automation",
+    "golden-profile"
+  ],
+  "author": "Edward Shamosh (https://github.com/Zbrooklyn)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zbrooklyn/playwright-pool.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.0",
+    "playwright": "^1.58.0",
+    "zod": "^3.23.0"
+  }
+}
