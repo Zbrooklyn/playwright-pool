@@ -26,7 +26,7 @@ const ANSWER_KEY_PATH = path.resolve(FIXTURES_DIR, 'answer-key.json');
 
 // ─── Configuration ──────────────────────────────────────────────────────
 
-const TOOL_TIMEOUT = 60_000;  // 60 seconds per tool per page
+const TOOL_TIMEOUT = 180_000; // 180 seconds per tool per page (Lighthouse needs time)
 const SERVER_PORT = 0;        // 0 = let OS pick a free port
 
 // ─── Main ───────────────────────────────────────────────────────────────
@@ -54,6 +54,10 @@ async function main() {
     results[tool] = {};
   }
 
+  // Pre-run playwright-pool accuracy for ALL pages in one shot (single browser launch)
+  console.log('\nRunning playwright-pool accuracy (all pages, single browser)...');
+  const poolCache = await runPlaywrightPoolAll(answerKey);
+
   // Run each page through each tool
   for (const pageName of pageNames) {
     const pageUrl = `http://localhost:${port}/${pageName}`;
@@ -63,8 +67,8 @@ async function main() {
     console.log(`\nTesting: ${pageName} (${totalBugs} planted bugs)`);
     console.log('-'.repeat(60));
 
-    // 1. playwright-pool
-    results['playwright-pool'][pageName] = await runPlaywrightPool(pageName, bugs);
+    // 1. playwright-pool (use pre-computed results)
+    results['playwright-pool'][pageName] = poolCache[pageName] || notInstalled(bugs);
 
     // 2. Lighthouse
     if (tools.lighthouse) {
@@ -213,63 +217,80 @@ function categorizeBugs(bugs) {
   return cats;
 }
 
-// 1. playwright-pool: run our accuracy command with --json
-async function runPlaywrightPool(pageName, bugs) {
+// 1. playwright-pool: run accuracy for ALL pages in a single invocation (one browser launch)
+//    Returns { pageName: result } for each page in the answer key.
+async function runPlaywrightPoolAll(answerKey) {
   const start = performance.now();
-  let issues = [];
+  const cache = {};
 
   try {
     const cliPath = path.resolve(PROJECT_ROOT, 'cli.js');
+    // Run accuracy without --page to test ALL pages in one browser session
     const output = execSync(
-      `node "${cliPath}" accuracy --page ${pageName} --json`,
+      `node "${cliPath}" accuracy --json`,
       {
         encoding: 'utf8',
-        timeout: TOOL_TIMEOUT * 3,  // Our tool runs all audits, give more time
+        timeout: TOOL_TIMEOUT * 5,  // All pages in one shot — give plenty of time
         cwd: PROJECT_ROOT,
         stdio: ['pipe', 'pipe', 'pipe'],
       }
     );
 
+    const elapsed = performance.now() - start;
+    const timePer = elapsed / Math.max(Object.keys(answerKey).length, 1) / 1000;
+
     // Parse JSON output — may have leading non-JSON lines (errors/warnings)
     const jsonStr = extractJson(output);
-    if (jsonStr) {
-      const data = JSON.parse(jsonStr);
-      // data.pages[0].score.matched contains which bugs were found
-      if (data.pages && data.pages.length > 0) {
-        const pageData = data.pages[0];
-        const elapsed = performance.now() - start;
-        const matched = pageData.score?.matched || [];
-        const foundBugIds = new Set(matched.map(m => m.bugId));
+    if (!jsonStr) {
+      console.error('  playwright-pool: could not extract JSON from output');
+      console.error('  First 200 chars:', output.slice(0, 200));
+      return cache;
+    }
 
-        const byCategory = categorizeBugs(bugs);
-        const categoryResults = {};
-        for (const [cat, catBugs] of Object.entries(byCategory)) {
-          const catFound = catBugs.filter(b => foundBugIds.has(b.id)).length;
-          categoryResults[cat] = { found: catFound, total: catBugs.length };
-        }
+    const data = JSON.parse(jsonStr);
+    // data.pages is an object keyed by page name
+    // Each page has: { knownBugs, found, missed, falsePositives, percentage, matched[], unmatched[] }
+    // matched[] items: { bugId, bugDescription, findingId, findingDescription, matchScore }
+    const pagesObj = data.pages || data;
 
-        return {
-          found: pageData.score?.found || 0,
-          total: bugs.length,
-          time: elapsed / 1000,
-          installed: true,
-          issues: matched,
-          byCategory: categoryResults,
-        };
+    for (const [pageName, pageData] of Object.entries(pagesObj)) {
+      if (!answerKey[pageName]) continue;
+      const bugs = answerKey[pageName].bugs;
+      const matched = pageData.matched || [];
+      const foundBugIds = new Set(matched.map(m => m.bugId));
+
+      const byCategory = categorizeBugs(bugs);
+      const categoryResults = {};
+      for (const [cat, catBugs] of Object.entries(byCategory)) {
+        const catFound = catBugs.filter(b => foundBugIds.has(b.id)).length;
+        categoryResults[cat] = { found: catFound, total: catBugs.length };
       }
+
+      cache[pageName] = {
+        found: pageData.found ?? matched.length ?? 0,
+        total: bugs.length,
+        time: timePer,
+        installed: true,
+        issues: matched,
+        byCategory: categoryResults,
+      };
+      console.log(`  playwright-pool: ${pageName} — ${cache[pageName].found}/${bugs.length} bugs found`);
     }
   } catch (err) {
-    // If accuracy command fails, try to extract partial data from stderr
-    const stderr = err.stderr || '';
+    // If accuracy command exits non-zero, stdout may still have valid JSON
     const stdout = err.stdout || '';
     const jsonStr = extractJson(stdout);
     if (jsonStr) {
       try {
         const data = JSON.parse(jsonStr);
-        if (data.pages && data.pages.length > 0) {
-          const pageData = data.pages[0];
-          const elapsed = performance.now() - start;
-          const matched = pageData.score?.matched || [];
+        const elapsed = performance.now() - start;
+        const pagesObj = data.pages || data;
+        const timePer = elapsed / Math.max(Object.keys(answerKey).length, 1) / 1000;
+
+        for (const [pageName, pageData] of Object.entries(pagesObj)) {
+          if (!answerKey[pageName]) continue;
+          const bugs = answerKey[pageName].bugs;
+          const matched = pageData.matched || [];
           const foundBugIds = new Set(matched.map(m => m.bugId));
           const byCategory = categorizeBugs(bugs);
           const categoryResults = {};
@@ -277,32 +298,45 @@ async function runPlaywrightPool(pageName, bugs) {
             const catFound = catBugs.filter(b => foundBugIds.has(b.id)).length;
             categoryResults[cat] = { found: catFound, total: catBugs.length };
           }
-          return {
-            found: pageData.score?.found || 0,
+          cache[pageName] = {
+            found: pageData.found ?? matched.length ?? 0,
             total: bugs.length,
-            time: elapsed / 1000,
+            time: timePer,
             installed: true,
             issues: matched,
             byCategory: categoryResults,
           };
+          console.log(`  playwright-pool: ${pageName} — ${cache[pageName].found}/${bugs.length} bugs found`);
         }
-      } catch { /* ignore parse error */ }
+      } catch { /* JSON parse failed — results stay empty */ }
     }
-    console.error(`  playwright-pool error: ${err.message?.slice(0, 120)}`);
+    if (Object.keys(cache).length === 0) {
+      console.error(`  playwright-pool error: ${err.message?.slice(0, 200)}`);
+    }
   }
 
   const elapsed = performance.now() - start;
-  const byCategory = categorizeBugs(bugs);
-  return {
-    found: 0,
-    total: bugs.length,
-    time: elapsed / 1000,
-    installed: true,
-    issues: [],
-    byCategory: Object.fromEntries(
-      Object.entries(byCategory).map(([cat, catBugs]) => [cat, { found: 0, total: catBugs.length }])
-    ),
-  };
+  console.log(`  playwright-pool: completed in ${(elapsed / 1000).toFixed(1)}s`);
+
+  // Fill in any missing pages with zero results
+  for (const pageName of Object.keys(answerKey)) {
+    if (!cache[pageName]) {
+      const bugs = answerKey[pageName].bugs;
+      const byCategory = categorizeBugs(bugs);
+      cache[pageName] = {
+        found: 0,
+        total: bugs.length,
+        time: elapsed / Object.keys(answerKey).length / 1000,
+        installed: true,
+        issues: [],
+        byCategory: Object.fromEntries(
+          Object.entries(byCategory).map(([cat, catBugs]) => [cat, { found: 0, total: catBugs.length }])
+        ),
+      };
+    }
+  }
+
+  return cache;
 }
 
 // 2. Lighthouse: run via npx, parse JSON report
@@ -407,6 +441,7 @@ async function runPa11y(pageUrl, bugs) {
       const arr = Array.isArray(data) ? data : (data.issues || []);
       issues = arr.map(issue => ({
         id: issue.code || 'pa11y-issue',
+        code: issue.code || '',  // Preserve full WCAG code (e.g. "WCAG2AA.1_1_1.H37")
         category: 'accessibility',
         description: issue.message || issue.msg || '',
         selector: issue.selector || issue.context || '',
@@ -491,8 +526,9 @@ function matchIssuesToBugs(issues, bugs, timeSec, installed) {
       }
     }
 
-    // Threshold: score >= 2 counts as a match
-    if (bestIdx >= 0 && bestScore >= 2) {
+    // Threshold: score >= 1.0 counts as a match — generous enough that
+    // category match + single keyword overlap (or a key phrase hit) qualifies
+    if (bestIdx >= 0 && bestScore >= 1.0) {
       foundBugIds.add(bug.id);
       issueUsed.add(bestIdx);
     }
@@ -522,14 +558,18 @@ function fuzzyMatch(bug, issue) {
   const issueDesc = (issue.description || '').toLowerCase();
   const issueHelp = (issue.help || '').toLowerCase();
   const issueDetails = (issue.details || '').toLowerCase();
-  const issueFull = `${issueDesc} ${issueHelp} ${issueDetails} ${(issue.id || '').toLowerCase()} ${(issue.displayValue || '').toLowerCase()}`;
+  const issueSelector = (issue.selector || '').toLowerCase();
+  const issueCode = (issue.code || '').toLowerCase();
+  const issueFull = `${issueDesc} ${issueHelp} ${issueDetails} ${(issue.id || '').toLowerCase()} ${(issue.displayValue || '').toLowerCase()} ${issueSelector} ${issueCode}`;
 
   // 1. Category match
   const bugCat = bug.category.toLowerCase();
   const issueCat = (issue.category || '').toLowerCase();
   if (bugCat === issueCat) score += 1;
-  // accessibility tools can find accessibility bugs
+  // accessibility tools can find accessibility bugs even when reported as general category
   if (issueCat === 'accessibility' && bugCat === 'accessibility') score += 0.5;
+  // Accessibility tools may report SEO-adjacent issues (title, lang, etc.)
+  if (issueCat === 'accessibility' && (bugCat === 'seo' || bugCat === 'accessibility')) score += 0.25;
 
   // 2. Selector overlap
   if (bug.selector && issue.selector) {
@@ -543,12 +583,17 @@ function fuzzyMatch(bug, issue) {
       const issueClasses = issueSel.match(/\.[\w-]+/g) || [];
       const overlap = bugClasses.filter(c => issueClasses.some(ic => ic.includes(c) || c.includes(ic)));
       if (overlap.length > 0) score += 1.5;
+      // Also check tag name overlap (e.g. "img", "button", "input")
+      const bugTag = bugSel.match(/^[a-z]+/)?.[0];
+      const issueTag = issueSel.match(/^[a-z]+/)?.[0];
+      if (bugTag && issueTag && bugTag === issueTag) score += 0.5;
     }
   }
 
-  // 3. Description keyword overlap
-  const bugWords = new Set(bugDesc.split(/\W+/).filter(w => w.length > 3));
-  const issueWords = new Set(issueFull.split(/\W+/).filter(w => w.length > 3));
+  // 3. Description keyword overlap (lowered min word length from 4 to 3 so
+  //    short but meaningful terms like "alt", "tab", "img", "seo" are counted)
+  const bugWords = new Set(bugDesc.split(/\W+/).filter(w => w.length > 2));
+  const issueWords = new Set(issueFull.split(/\W+/).filter(w => w.length > 2));
   let wordOverlap = 0;
   for (const w of bugWords) {
     if (issueWords.has(w)) wordOverlap++;
@@ -558,32 +603,70 @@ function fuzzyMatch(bug, issue) {
   else if (wordOverlap >= 1) score += 0.5;
 
   // 4. Key phrase matching for common bug types
+  //    Includes WCAG technique codes (Pa11y uses H37, H44, etc.) and WCAG SC numbers.
+  //    Pa11y codes follow the pattern: WCAG2AA.Principle.Guideline.Technique
+  //    e.g. "WCAG2AA.1_1_1.H37" = missing alt text (Technique H37, SC 1.1.1)
   const keyPhrases = [
-    { bugPattern: /missing alt/i, issuePattern: /alt|image.*text|img.*alt/i, boost: 2 },
-    { bugPattern: /empty button/i, issuePattern: /button.*text|empty.*button|button.*label/i, boost: 2 },
-    { bugPattern: /color contrast|contrast/i, issuePattern: /contrast/i, boost: 2 },
-    { bugPattern: /no.*label|missing.*label/i, issuePattern: /label|form.*label/i, boost: 1.5 },
-    { bugPattern: /missing.*title/i, issuePattern: /title|document.*title/i, boost: 1.5 },
-    { bugPattern: /viewport/i, issuePattern: /viewport/i, boost: 2 },
-    { bugPattern: /heading.*hierarchy|heading.*skip/i, issuePattern: /heading.*order|heading.*level|heading.*skip/i, boost: 2 },
-    { bugPattern: /touch target|tap target/i, issuePattern: /touch|tap|target.*size/i, boost: 1.5 },
-    { bugPattern: /anchor.*empty|empty.*href/i, issuePattern: /link.*href|anchor|crawl/i, boost: 1.5 },
-    { bugPattern: /focus.*ring|outline.*none/i, issuePattern: /focus|outline/i, boost: 1.5 },
-    { bugPattern: /nested interactive/i, issuePattern: /nested|interactive.*control/i, boost: 2 },
+    // Image alt text — Pa11y: H37, WCAG 1.1.1; axe: image-alt
+    { bugPattern: /alt|image.*missing/i, issuePattern: /alt|H37|1_1_1|1\.1\.1|image-alt|non-text/i, boost: 2 },
+    // Empty button — Pa11y: H91; axe: button-name
+    { bugPattern: /empty button|button.*text|button.*label/i, issuePattern: /button.*text|empty.*button|button.*label|button-name|H91/i, boost: 2 },
+    // Color contrast — Pa11y: G18/G145, WCAG 1.4.3; axe: color-contrast
+    { bugPattern: /color contrast|contrast|insufficient.*contrast/i, issuePattern: /contrast|1_4_3|1\.4\.3|color-contrast|G18|G145/i, boost: 2 },
+    // Form labels — Pa11y: H44/H65, WCAG 1.3.1/4.1.2; axe: label
+    { bugPattern: /label|input.*name|form.*associated/i, issuePattern: /label|H44|H65|1_3_1|1\.3\.1|4_1_2|4\.1\.2|input.*name|form-field/i, boost: 1.5 },
+    // Document title — Pa11y: H25, WCAG 2.4.2; axe: document-title
+    { bugPattern: /title/i, issuePattern: /title|H25|2_4_2|2\.4\.2|document-title/i, boost: 1.5 },
+    // Viewport — Lighthouse/axe: viewport
+    { bugPattern: /viewport/i, issuePattern: /viewport|meta.*viewport/i, boost: 2 },
+    // Heading hierarchy — Pa11y: G141, WCAG 1.3.1; axe: heading-order
+    { bugPattern: /heading|h[1-6].*skip|h[1-6].*order/i, issuePattern: /heading|heading.*order|heading.*level|heading.*skip|1_3_1|G141|heading-order/i, boost: 2 },
+    // Tap/touch targets — Lighthouse: tap-target
+    { bugPattern: /touch target|tap target|target.*small/i, issuePattern: /touch|tap|target.*size|tap-target/i, boost: 1.5 },
+    // Empty href / anchor links — Pa11y: H30; Lighthouse: crawlable-anchors
+    { bugPattern: /anchor|empty.*href|href.*empty/i, issuePattern: /link.*href|anchor|crawl|empty.*href|H30|crawlable/i, boost: 1.5 },
+    // Focus ring / outline — axe: focus-visible
+    { bugPattern: /focus.*ring|outline.*none|focus.*visible/i, issuePattern: /focus|outline|focus-visible/i, boost: 1.5 },
+    // Nested interactive elements — axe: nested-interactive
+    { bugPattern: /nested interactive|interactive.*inside/i, issuePattern: /nested|interactive.*control|nested-interactive/i, boost: 2 },
+    // Tab order / tabindex — axe: tabindex
     { bugPattern: /tab.*order|tabindex/i, issuePattern: /tab.*order|tabindex|focus.*order/i, boost: 2 },
-    { bugPattern: /open graph|og:/i, issuePattern: /open.*graph|og:|meta/i, boost: 1.5 },
+    // Open Graph / meta tags — Lighthouse: structured-data
+    { bugPattern: /open graph|og:|meta.*description/i, issuePattern: /open.*graph|og:|meta|structured/i, boost: 1.5 },
+    // Canonical link — Lighthouse: canonical
     { bugPattern: /canonical/i, issuePattern: /canonical/i, boost: 2 },
-    { bugPattern: /user-select.*none/i, issuePattern: /user.*select/i, boost: 2 },
-    { bugPattern: /auto.*play|animation.*pause/i, issuePattern: /animation|motion|prefers.*reduced/i, boost: 1.5 },
-    { bugPattern: /focus.*trap|modal.*focus/i, issuePattern: /focus.*trap|dialog|modal/i, boost: 2 },
+    // User-select
+    { bugPattern: /user-select.*none|text.*select/i, issuePattern: /user.*select/i, boost: 2 },
+    // Animation / motion — axe: no-autoplay-audio
+    { bugPattern: /auto.*play|animation.*pause|motion/i, issuePattern: /animation|motion|prefers.*reduced|autoplay/i, boost: 1.5 },
+    // Focus trap / modal — axe: focus-trap
+    { bugPattern: /focus.*trap|modal.*focus|dialog.*focus/i, issuePattern: /focus.*trap|dialog|modal|focus-trap/i, boost: 2 },
+    // Language attribute — Pa11y: H57, WCAG 3.1.1; axe: html-has-lang
+    { bugPattern: /lang|language/i, issuePattern: /lang|H57|3_1_1|3\.1\.1|html-has-lang|html-lang/i, boost: 2 },
+    // ARIA roles / attributes — axe: aria-*
+    { bugPattern: /aria|role/i, issuePattern: /aria|role|aria-allowed|aria-required|aria-valid/i, boost: 1.5 },
+    // Link text / purpose — Pa11y: H30, WCAG 2.4.4; axe: link-name
+    { bugPattern: /link.*text|link.*purpose|descriptive.*link/i, issuePattern: /link.*text|link.*name|H30|2_4_4|2\.4\.4|link-name/i, boost: 1.5 },
+    // Overflow / scrolling — visual bug
+    { bugPattern: /overflow|horizontal.*scroll/i, issuePattern: /overflow|scroll|wider/i, boost: 1.5 },
+    // Image size / dimensions — Lighthouse: uses-responsive-images
+    { bugPattern: /image.*size|image.*dimension|aspect.*ratio/i, issuePattern: /image|responsive.*image|uses-responsive|aspect/i, boost: 1.5 },
+    // Skip link / navigation — Pa11y: G1, WCAG 2.4.1; axe: bypass
+    { bugPattern: /skip.*link|bypass|navigation/i, issuePattern: /skip|bypass|G1|2_4_1|2\.4\.1/i, boost: 1.5 },
+    // Table structure — Pa11y: H43/H63; axe: td-headers-attr
+    { bugPattern: /table.*header|table.*structure/i, issuePattern: /table|header|H43|H63|td-headers/i, boost: 1.5 },
+    // Autocomplete — Pa11y: H98; axe: autocomplete-valid
+    { bugPattern: /autocomplete/i, issuePattern: /autocomplete|H98/i, boost: 2 },
   ];
 
+  // Apply the BEST matching key phrase (not just the first)
+  let bestPhraseBoost = 0;
   for (const { bugPattern, issuePattern, boost } of keyPhrases) {
     if (bugPattern.test(bugDesc) && issuePattern.test(issueFull)) {
-      score += boost;
-      break;  // Only apply the best match
+      if (boost > bestPhraseBoost) bestPhraseBoost = boost;
     }
   }
+  score += bestPhraseBoost;
 
   return score;
 }
