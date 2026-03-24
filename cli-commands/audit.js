@@ -142,7 +142,7 @@ export async function handleAudit(args) {
       try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
         // Wait a bit for JS to settle
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(200);
       } catch (err) {
         console.error(`  Failed to navigate to ${url}: ${err.message}`);
         allResults[url] = { error: err.message };
