@@ -11,6 +11,7 @@
 // Trace:           trace start/stop                       → ./cli-commands/trace.js
 // Benchmark:       benchmark                              → ./cli-commands/benchmark.js
 // Accuracy:        accuracy                               → ./cli-commands/accuracy.js
+// Compare:         compare                                → ./scripts/competitor-benchmark.js
 // Install:         install (inline — npx playwright install chromium)
 
 import fs from 'fs';
@@ -126,6 +127,18 @@ switch (command) {
     break;
   }
 
+  // ── Compare (standalone — competitor benchmark) ────────────────
+  case 'compare': {
+    const { execSync: execSyncCompare } = await import('child_process');
+    const comparePath = path.join(__dirname, 'scripts', 'competitor-benchmark.js');
+    try {
+      execSyncCompare(`node "${comparePath}"`, { stdio: 'inherit', cwd: __dirname });
+    } catch (e) {
+      process.exit(e.status || 1);
+    }
+    break;
+  }
+
   // ── Install Chromium ────────────────────────────────────────────
   case 'install': {
     const { execSync } = await import('child_process');
@@ -216,6 +229,9 @@ Benchmark (standalone):
 Accuracy (standalone):
   accuracy               Score audit accuracy against test fixtures (--page, --verbose, --json)
   accuracy --url <url>   Run audits against a real URL (report only, no scoring)
+
+Competitor Comparison:
+  compare                Run competitor benchmark (playwright-pool vs Lighthouse vs Pa11y vs axe-core)
 
 Examples:
   playwright-pool init
