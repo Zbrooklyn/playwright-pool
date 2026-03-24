@@ -5,3 +5,4 @@ pool-contexts/
 benchmark-results-*.json
 baseline.json
 playwright-audit/
+autoresearch-log.jsonl
