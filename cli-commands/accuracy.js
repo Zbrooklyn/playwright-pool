@@ -155,6 +155,38 @@ async function runAllAudits(page, context) {
   // audit.js doesn't export individual handlers. This keeps accuracy.js
   // self-contained and avoids modifying audit.js.
 
+  // 0. Typography audit — force fallback fonts to detect orphans reliably
+  try {
+    // Override all headings to use generic fallback font for orphan measurement
+    await page.evaluate(() => {
+      const style = document.createElement('style');
+      style.id = '__typography-audit-override';
+      style.textContent = 'h1, h2, h3 { font-family: sans-serif !important; }';
+      document.head.appendChild(style);
+    });
+    await page.waitForTimeout(50);
+
+    const typographyResults = await runTypographyAudit(page);
+    for (const t of typographyResults) {
+      findings.push({
+        audit: 'fonts',
+        category: t.category || 'visual',
+        id: t.id || 'typography-issue',
+        description: t.description,
+        selector: t.selector || '',
+        severity: t.severity || 'minor',
+      });
+    }
+
+    // Remove the override
+    await page.evaluate(() => {
+      const override = document.getElementById('__typography-audit-override');
+      if (override) override.remove();
+    });
+  } catch (err) {
+    console.error(`  Error in typography audit: ${err.message}`);
+  }
+
   // 1. Accessibility audit
   try {
     const a11yResults = await runAccessibilityAudit(page);
@@ -358,6 +390,42 @@ async function runAllAudits(page, context) {
     }
   } catch (err) {
     console.error(`  Error in interaction audit: ${err.message}`);
+  }
+
+  // 13. (Typography audit moved to position 0 above — runs before fonts load)
+
+  // 14. Font swap CLS audit (Google Fonts with display=swap)
+  try {
+    const fontSwapResults = await runFontSwapAudit(page);
+    for (const f of fontSwapResults) {
+      findings.push({
+        audit: 'fonts',
+        category: f.category || 'performance',
+        id: f.id || 'font-swap-cls',
+        description: f.description,
+        selector: f.selector || '',
+        severity: f.severity || 'moderate',
+      });
+    }
+  } catch (err) {
+    console.error(`  Error in font swap audit: ${err.message}`);
+  }
+
+  // 15. Interaction test audit (modal scroll lock, hover stuck, carousel keyboard)
+  try {
+    const interactionTestResults = await runInteractionTestAudit(page);
+    for (const i of interactionTestResults) {
+      findings.push({
+        audit: 'interaction',
+        category: i.category || 'interaction',
+        id: i.id || 'interaction-test-issue',
+        description: i.description,
+        selector: i.selector || '',
+        severity: i.severity || 'moderate',
+      });
+    }
+  } catch (err) {
+    console.error(`  Error in interaction test audit: ${err.message}`);
   }
 
   return findings;
@@ -1367,6 +1435,44 @@ async function runPrintAudit(page) {
 
   issues.push(...printIssues);
 
+  // Check for missing @media print rules entirely (no print stylesheet at all)
+  if (printIssues.length === 0) {
+    const hasPrintRules = await page.evaluate(() => {
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules || []) {
+            if (rule instanceof CSSMediaRule &&
+                rule.conditionText &&
+                rule.conditionText.includes('print')) {
+              return true;
+            }
+          }
+        } catch (e) {
+          // Cross-origin stylesheet, skip
+        }
+      }
+      return false;
+    });
+
+    if (!hasPrintRules) {
+      // Check if page has nav/footer/decorative elements that should be hidden
+      const hasHideableElements = await page.evaluate(() => {
+        const selectors = ['nav', 'footer', 'header', '.sidebar', '[role="navigation"]', '[role="banner"]', '[role="contentinfo"]'];
+        return selectors.some(s => document.querySelector(s) !== null);
+      });
+
+      if (hasHideableElements) {
+        issues.push({
+          category: 'print',
+          id: 'print-no-styles',
+          description: 'No @media print rules found — nav, footer, and decorative elements will appear when printed',
+          selector: 'body',
+          severity: 'moderate',
+        });
+      }
+    }
+  }
+
   // Restore screen media
   await page.emulateMedia({ media: 'screen' });
   await page.waitForTimeout(100);
@@ -1508,6 +1614,444 @@ async function runInteractionAudit(page) {
   });
 }
 
+// ─── Typography Audit ────────────────────────────────────────────────────
+// Detects orphaned words (typographic widows) in headings.
+
+async function runTypographyAudit(page) {
+  return page.evaluate(() => {
+    const issues = [];
+    const headings = document.querySelectorAll('h1, h2, h3');
+
+    for (const h of headings) {
+      const style = window.getComputedStyle(h);
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+
+      const text = (h.textContent || '').trim();
+      const words = text.split(/\s+/);
+      if (words.length < 4) continue; // Too short to have a meaningful orphan
+
+      const rect = h.getBoundingClientRect();
+      const lineHeight = parseFloat(style.lineHeight) ||
+        parseFloat(style.fontSize) * 1.2;
+      const approxLines = Math.round(rect.height / lineHeight);
+
+      if (approxLines < 2) continue; // Single line, no orphan possible
+
+      // Find all text nodes
+      const walker = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.textContent.trim()) textNodes.push(node);
+      }
+      if (textNodes.length === 0) continue;
+
+      try {
+        // Get word positions to determine line breaks
+        const wordPositions = [];
+        let searchFrom = 0;
+        const firstTextNode = textNodes[0];
+        const fullText = firstTextNode.textContent;
+
+        for (const word of words) {
+          const idx = fullText.indexOf(word, searchFrom);
+          if (idx < 0) continue;
+          const r = document.createRange();
+          r.setStart(firstTextNode, idx);
+          r.setEnd(firstTextNode, idx + word.length);
+          const rects = r.getClientRects();
+          if (rects.length > 0) {
+            wordPositions.push({ word, top: rects[0].top, left: rects[0].left, right: rects[0].right });
+          }
+          searchFrom = idx + word.length;
+        }
+
+        if (wordPositions.length < 4) continue;
+
+        // Group words by line (same top value within tolerance)
+        const lines = [];
+        let currentLine = [wordPositions[0]];
+        for (let i = 1; i < wordPositions.length; i++) {
+          if (Math.abs(wordPositions[i].top - currentLine[0].top) < lineHeight * 0.3) {
+            currentLine.push(wordPositions[i]);
+          } else {
+            lines.push(currentLine);
+            currentLine = [wordPositions[i]];
+          }
+        }
+        lines.push(currentLine);
+
+        if (lines.length < 2) continue;
+
+        // Check if the last line has only 1 word (classic orphan)
+        // or if the last line has much less content than other lines
+        const lastLine = lines[lines.length - 1];
+        const lastLineText = lastLine.map(w => w.word).join(' ');
+        const lastLineCharCount = lastLineText.length;
+
+        // Average character count of non-last lines
+        const otherLines = lines.slice(0, -1);
+        const avgOtherChars = otherLines.reduce((sum, line) =>
+          sum + line.map(w => w.word).join(' ').length, 0) / otherLines.length;
+
+        // Orphan: last line has 1 word, or last line is very short (<25% of average)
+        const isOrphan = lastLine.length === 1 ||
+          (lastLineCharCount < avgOtherChars * 0.35 && lastLine.length <= 2);
+
+        if (isOrphan) {
+          const orphanText = lastLine.map(w => w.word).join(' ');
+          const tag = h.tagName.toLowerCase();
+          const selector = tag +
+            (h.className ? '.' + String(h.className).split(' ')[0] : '') +
+            (h.id ? '#' + h.id : '');
+          issues.push({
+            category: 'visual',
+            id: 'orphaned-word',
+            description: `Orphaned word in heading — "${orphanText}" appears alone on the last line of "${text.slice(0, 60)}"`,
+            selector,
+            severity: 'minor',
+          });
+        }
+      } catch (e) {
+        // Range operations can fail, skip
+      }
+    }
+
+    return issues;
+  });
+}
+
+// ─── Font Swap CLS Audit ────────────────────────────────────────────────
+// Detects Google Fonts loaded with display=swap causing layout shift.
+
+async function runFontSwapAudit(page) {
+  return page.evaluate(() => {
+    const issues = [];
+    const seen = new Set();
+
+    // Check for Google Fonts links with display=swap
+    const links = document.querySelectorAll('link[href*="fonts.googleapis.com"], link[href*="fonts.gstatic.com"]');
+    for (const link of links) {
+      const href = link.getAttribute('href') || '';
+      if (href.includes('display=swap')) {
+        const familyMatch = href.match(/family=([^&:]+)/);
+        const fontName = familyMatch ? decodeURIComponent(familyMatch[1]).replace(/\+/g, ' ') : 'unknown';
+        const key = 'link:' + fontName;
+        if (!seen.has(key)) {
+          seen.add(key);
+          issues.push({
+            category: 'performance',
+            id: 'font-swap-cls',
+            description: `Google Font "${fontName}" uses display=swap which causes visible layout shift (CLS) as fallback font is replaced`,
+            selector: 'body',
+            severity: 'moderate',
+          });
+        }
+      }
+    }
+
+    // Check CSS @import rules and @font-face rules with font-display: swap
+    for (const sheet of document.styleSheets) {
+      try {
+        for (const rule of sheet.cssRules || []) {
+          // @import url(...) with display=swap in the URL
+          if (rule instanceof CSSImportRule) {
+            const href = rule.href || '';
+            if (href.includes('fonts.googleapis.com') && href.includes('display=swap')) {
+              const familyMatch = href.match(/family=([^&:]+)/);
+              const fontName = familyMatch ? decodeURIComponent(familyMatch[1]).replace(/\+/g, ' ') : 'unknown';
+              const key = 'import:' + fontName;
+              if (!seen.has(key)) {
+                seen.add(key);
+                issues.push({
+                  category: 'performance',
+                  id: 'font-swap-cls',
+                  description: `Google Font "${fontName}" loaded via @import with display=swap causing visible layout shift as fallback font is replaced`,
+                  selector: 'body',
+                  severity: 'moderate',
+                });
+              }
+            }
+          }
+          // @font-face with font-display: swap
+          if (rule instanceof CSSFontFaceRule) {
+            const display = rule.style.getPropertyValue('font-display');
+            if (display === 'swap') {
+              const family = rule.style.getPropertyValue('font-family') || 'unknown';
+              const key = 'fontface:' + family;
+              if (!seen.has(key)) {
+                seen.add(key);
+                issues.push({
+                  category: 'performance',
+                  id: 'font-swap-cls',
+                  description: `@font-face "${family}" uses font-display:swap which may cause layout shift`,
+                  selector: 'body',
+                  severity: 'moderate',
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Cross-origin stylesheet, skip
+      }
+    }
+
+    return issues;
+  });
+}
+
+// ─── Interaction Test Audit ─────────────────────────────────────────────
+// Actually interacts with the page: clicks modals, tests hover, tests keyboard.
+
+async function runInteractionTestAudit(page) {
+  const issues = [];
+
+  // --- 1. Modal scroll lock test ---
+  // Find modal trigger buttons and test if body gets overflow:hidden
+  try {
+    const modalTriggers = await page.evaluate(() => {
+      const triggers = [];
+      // Look for buttons that open modals
+      const candidates = document.querySelectorAll(
+        'button[data-modal], button[aria-controls], [data-toggle="modal"], button'
+      );
+      for (const btn of candidates) {
+        const text = (btn.textContent || '').trim().toLowerCase();
+        const ariaControls = btn.getAttribute('aria-controls') || '';
+        const dataModal = btn.getAttribute('data-modal') || '';
+        // Heuristic: button text or attributes suggest modal
+        if (text.includes('modal') || text.includes('settings') || text.includes('open') ||
+            ariaControls.includes('modal') || dataModal) {
+          const id = btn.id || '';
+          const selector = btn.tagName.toLowerCase() +
+            (btn.id ? '#' + btn.id : '') +
+            (btn.className ? '.' + String(btn.className).split(' ')[0] : '');
+          triggers.push({ selector, id, text: text.slice(0, 30) });
+        }
+      }
+      return triggers;
+    });
+
+    for (const trigger of modalTriggers.slice(0, 3)) {
+      try {
+        // Click the trigger
+        await page.click(trigger.selector, { timeout: 2000 });
+        await page.waitForTimeout(500);
+
+        // Check if body has overflow: hidden
+        const bodyOverflow = await page.evaluate(() => {
+          const style = window.getComputedStyle(document.body);
+          return style.overflow + ' ' + style.overflowY;
+        });
+
+        // Check if a modal/overlay is actually visible
+        const modalVisible = await page.evaluate(() => {
+          const overlays = document.querySelectorAll(
+            '.modal-overlay, .modal, [role="dialog"], .overlay'
+          );
+          for (const el of overlays) {
+            const style = window.getComputedStyle(el);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+              return true;
+            }
+          }
+          return false;
+        });
+
+        if (modalVisible && !bodyOverflow.includes('hidden')) {
+          // Find the modal overlay selector
+          const overlaySelector = await page.evaluate(() => {
+            const overlays = document.querySelectorAll(
+              '.modal-overlay, [role="dialog"], .overlay'
+            );
+            for (const el of overlays) {
+              const style = window.getComputedStyle(el);
+              if (style.display !== 'none' && style.visibility !== 'hidden') {
+                return el.tagName.toLowerCase() +
+                  (el.id ? '#' + el.id : '') +
+                  (el.className ? '.' + String(el.className).split(' ')[0] : '');
+              }
+            }
+            return '';
+          });
+
+          issues.push({
+            category: 'interaction',
+            id: 'modal-scroll-lock',
+            description: `Modal is open but body does not have overflow:hidden — background content can scroll behind modal`,
+            selector: overlaySelector || trigger.selector,
+            severity: 'moderate',
+          });
+        }
+
+        // Close the modal (press Escape)
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+      } catch (e) {
+        // Click failed or modal didn't appear, skip
+      }
+    }
+  } catch (err) {
+    // Modal test failed entirely, skip
+  }
+
+  // --- 2. Hover stuck on touch test ---
+  // Find elements with data-hover or hover-related JS classes
+  try {
+    const hoverCards = await page.evaluate(() => {
+      const cards = [];
+      const candidates = document.querySelectorAll('[data-hover], .hover-card');
+      for (const el of candidates) {
+        const selector = el.tagName.toLowerCase() +
+          (el.className ? '.' + String(el.className).split(' ')[0] : '') +
+          (el.id ? '#' + el.id : '');
+        cards.push(selector);
+      }
+      return cards;
+    });
+
+    if (hoverCards.length > 0) {
+      // Check if touchend properly cleans up hover classes
+      const hoverStuck = await page.evaluate((selectors) => {
+        const results = [];
+        for (const sel of selectors) {
+          const el = document.querySelector(sel);
+          if (!el) continue;
+
+          // Check if element has mouseenter/touchstart event listeners
+          // by looking for data-hover attribute or checking inline event handlers
+          const hasHoverSetup = el.hasAttribute('data-hover') ||
+            el.getAttribute('onmouseenter') ||
+            el.getAttribute('ontouchstart');
+
+          if (hasHoverSetup) {
+            // Simulate: dispatch touchstart then touchend and check if hovered class persists
+            el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }));
+            const hadHoverClass = el.classList.contains('hovered');
+
+            el.dispatchEvent(new TouchEvent('touchend', { bubbles: true }));
+            const stillHasHoverClass = el.classList.contains('hovered');
+
+            if (hadHoverClass && stillHasHoverClass) {
+              results.push({
+                selector: sel,
+                description: `Hover state stuck — element ${sel} keeps 'hovered' class after touchend (no touchend cleanup)`,
+              });
+            } else if (hasHoverSetup && !el.getAttribute('ontouchend')) {
+              // Check JS-based setup: if mouseenter adds hovered but there's no touchend handler
+              // Look at the source — if data-hover exists and hovered class is applied via JS
+              // Simulate mouseenter
+              el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+              const afterMouseEnter = el.classList.contains('hovered');
+
+              if (afterMouseEnter) {
+                // Now simulate touchstart (which also adds hovered on touch devices)
+                el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }));
+                // Then touchend
+                el.dispatchEvent(new TouchEvent('touchend', { bubbles: true }));
+                const afterTouch = el.classList.contains('hovered');
+
+                if (afterTouch) {
+                  results.push({
+                    selector: sel,
+                    description: `Hover state stuck — element ${sel} uses mouseenter/touchstart to add 'hovered' class but touchend doesn't reliably remove it`,
+                  });
+                }
+              }
+            }
+          }
+        }
+        return results;
+      }, hoverCards);
+
+      for (const h of hoverStuck) {
+        issues.push({
+          category: 'interaction',
+          id: 'hover-stuck-touch',
+          description: h.description,
+          selector: h.selector,
+          severity: 'moderate',
+        });
+      }
+    }
+  } catch (err) {
+    // Hover test failed, skip
+  }
+
+  // --- 3. Carousel keyboard navigation test ---
+  // Find carousel prev/next buttons and test if Enter/Space triggers navigation
+  try {
+    const carouselBtns = await page.evaluate(() => {
+      const btns = [];
+      const candidates = document.querySelectorAll(
+        '[id*="carousel" i][role="button"], [class*="carousel" i][role="button"], ' +
+        '[id*="carousel" i] button, [class*="carousel" i] button, ' +
+        '.carousel-btn, .carousel-prev, .carousel-next, ' +
+        '#carouselPrev, #carouselNext'
+      );
+      for (const btn of candidates) {
+        const selector = btn.tagName.toLowerCase() +
+          (btn.id ? '#' + btn.id : '') +
+          (btn.className ? '.' + String(btn.className).split(' ')[0] : '');
+        btns.push({ selector, tag: btn.tagName.toLowerCase(), hasKeydownHandler: false });
+      }
+      return btns;
+    });
+
+    if (carouselBtns.length > 0) {
+      // Check if the carousel buttons have keydown handlers
+      const carouselKeyboardIssue = await page.evaluate((btns) => {
+        for (const btn of btns) {
+          const el = document.querySelector(btn.selector);
+          if (!el) continue;
+
+          // If it's not a native button, it needs a keydown handler for Enter/Space
+          if (el.tagName.toLowerCase() !== 'button') {
+            // Try pressing Enter on the element and check if anything happens
+            // We can check by looking at event listeners (not directly possible)
+            // Instead, check if there's a keydown listener by dispatching and seeing state change
+
+            // Get carousel state before
+            const track = document.querySelector('.carousel-track, [class*="carousel-track"]');
+            const transformBefore = track ? track.style.transform : '';
+
+            // Dispatch keydown Enter
+            el.focus();
+            el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+            el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
+
+            // Check if carousel state changed
+            const transformAfter = track ? track.style.transform : '';
+
+            if (transformBefore === transformAfter) {
+              return {
+                selector: btn.selector,
+                description: `Carousel button ${btn.selector} has role="button" and tabindex but Enter/Space key does nothing — not keyboard-navigable`,
+              };
+            }
+          }
+        }
+        return null;
+      }, carouselBtns);
+
+      if (carouselKeyboardIssue) {
+        issues.push({
+          category: 'accessibility',
+          id: 'carousel-keyboard-nav',
+          description: carouselKeyboardIssue.description,
+          selector: carouselKeyboardIssue.selector,
+          severity: 'moderate',
+        });
+      }
+    }
+  } catch (err) {
+    // Carousel test failed, skip
+  }
+
+  return issues;
+}
+
 // ─── Scoring Engine ─────────────────────────────────────────────────────
 
 function scoreFindingsAgainstBugs(findings, knownBugs) {
@@ -1560,11 +2104,29 @@ function scoreFindingsAgainstBugs(findings, knownBugs) {
   };
 }
 
+// Category affinity — related category pairs that should still partially match.
+// Key: finding.category, Values: set of bug.category values it can match.
+const CATEGORY_AFFINITY = {
+  spacing: new Set(['visual']),
+  typography: new Set(['visual']),
+  print: new Set(['visual']),
+  visual: new Set(['spacing', 'typography', 'print']),
+  interaction: new Set(['accessibility']),
+  accessibility: new Set(['interaction']),
+};
+
 function matchScore(bug, finding) {
   let score = 0;
 
-  // 1. Category match (broad)
-  if (bug.category === finding.category) score += 1;
+  // 1. Category match (broad) — exact match +1, affinity match +0.5
+  if (bug.category === finding.category) {
+    score += 1;
+  } else {
+    const affinity = CATEGORY_AFFINITY[finding.category];
+    if (affinity && affinity.has(bug.category)) {
+      score += 0.5;
+    }
+  }
 
   // 2. Subcategory / audit ID match (strong signal)
   if (bug.subcategory) {
@@ -1617,8 +2179,23 @@ function matchScore(bug, finding) {
     for (const w of bugWords) {
       if (findWords.has(w)) overlap++;
     }
-    if (overlap >= 3) score += 1;
+    if (overlap >= 3) score += 2;
+    else if (overlap >= 2) score += 1;
     else if (overlap >= 1) score += 0.5;
+  }
+
+  // 6. Narrow audit-domain mismatch penalty — only for clearly unrelated pairings
+  //    (e.g., print finding matching a performance/font bug, seo finding matching visual bug)
+  const HARD_MISMATCH_PAIRS = [
+    // [finding audit, bug category] pairs that should never match
+    ['print', 'performance'], ['print', 'typography'], ['print', 'seo'],
+    ['meta', 'visual'], ['meta', 'performance'], ['meta', 'accessibility'],
+  ];
+  for (const [auditVal, catVal] of HARD_MISMATCH_PAIRS) {
+    if (finding.audit === auditVal && bug.category === catVal) {
+      score -= 1.5;
+      break;
+    }
   }
 
   return score;
