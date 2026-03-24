@@ -1,0 +1,97 @@
+{
+  "test-page-easy.html": {
+    "description": "10 planted bugs — basic accessibility, SEO, and layout issues",
+    "bugs": [
+      {
+        "id": "easy-1",
+        "category": "accessibility",
+        "subcategory": "image-alt",
+        "severity": "critical",
+        "description": "Image missing alt attribute",
+        "selector": "img.no-alt",
+        "matchHints": ["image-alt", "alt", "img"]
+      },
+      {
+        "id": "easy-2",
+        "category": "accessibility",
+        "subcategory": "button-name",
+        "severity": "critical",
+        "description": "Empty button with no text or aria-label",
+        "selector": "button.empty-button",
+        "matchHints": ["button-name", "empty button", "btn-icon"]
+      },
+      {
+        "id": "easy-3",
+        "category": "accessibility",
+        "subcategory": "color-contrast",
+        "severity": "serious",
+        "description": "Insufficient color contrast on subtitle text (#999 on #fff)",
+        "selector": ".hero .subtitle",
+        "matchHints": ["color-contrast", "contrast", "#999", "subtitle"]
+      },
+      {
+        "id": "easy-4",
+        "category": "accessibility",
+        "subcategory": "label",
+        "severity": "critical",
+        "description": "Form input without associated label",
+        "selector": "input.no-label-input",
+        "matchHints": ["label", "form", "input", "no-label"]
+      },
+      {
+        "id": "easy-5",
+        "category": "seo",
+        "subcategory": "title-missing",
+        "severity": "critical",
+        "description": "Missing page title element",
+        "selector": "head",
+        "matchHints": ["title-missing", "document-title", "title", "<title>"]
+      },
+      {
+        "id": "easy-6",
+        "category": "seo",
+        "subcategory": "viewport-missing",
+        "severity": "critical",
+        "description": "Missing meta viewport tag",
+        "selector": "head",
+        "matchHints": ["viewport-missing", "viewport", "meta viewport"]
+      },
+      {
+        "id": "easy-7",
+        "category": "accessibility",
+        "subcategory": "link-name",
+        "severity": "serious",
+        "description": "Link with empty href attribute",
+        "selector": "a.empty-href-link",
+        "matchHints": ["link-name", "empty", "href"]
+      },
+      {
+        "id": "easy-8",
+        "category": "accessibility",
+        "subcategory": "heading-order",
+        "severity": "moderate",
+        "description": "Heading hierarchy skip — h3 after h1 with no h2",
+        "selector": ".hero h3",
+        "matchHints": ["heading-order", "heading", "h3", "h1", "skip"]
+      },
+      {
+        "id": "easy-9",
+        "category": "visual",
+        "subcategory": "overflow",
+        "severity": "serious",
+        "description": "Horizontal overflow — 2000px element inside constrained container",
+        "selector": ".overflow-inner",
+        "matchHints": ["overflow", "horizontal", "2000px", "scroll"]
+      },
+      {
+        "id": "easy-10",
+        "category": "accessibility",
+        "subcategory": "tap-target",
+        "severity": "serious",
+        "description": "Touch target too small (20x20px button)",
+        "selector": "button.small-touch-target",
+        "matchHints": ["tap-target", "touch", "small", "20px", "btn-small"]
+      }
+    ]
+  }
+}

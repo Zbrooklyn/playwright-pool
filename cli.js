@@ -10,6 +10,7 @@
 // Mouse:           mouse move/click/drag                  → ./cli-commands/mouse.js
 // Trace:           trace start/stop                       → ./cli-commands/trace.js
 // Benchmark:       benchmark                              → ./cli-commands/benchmark.js
+// Accuracy:        accuracy                               → ./cli-commands/accuracy.js
 // Install:         install (inline — npx playwright install chromium)
 
 import fs from 'fs';
@@ -82,6 +83,13 @@ switch (command) {
   case 'audit': {
     const { handleAudit } = await import('./cli-commands/audit.js');
     await handleAudit(args.slice(1));
+    break;
+  }
+
+  // ── Accuracy (standalone — audit accuracy scoring) ────────────
+  case 'accuracy': {
+    const { handleAccuracy } = await import('./cli-commands/accuracy.js');
+    await handleAccuracy(args.slice(1));
     break;
   }
 
@@ -204,6 +212,10 @@ Trace (persistent session):
 Benchmark (standalone):
   benchmark              Run performance benchmark matrix (--quick, --site, --operation, --runs, --warmup)
   benchmark compare <a> <b>  Compare two benchmark JSON files (Welch's t-test regression detection)
+
+Accuracy (standalone):
+  accuracy               Score audit accuracy against test fixtures (--page, --verbose, --json)
+  accuracy --url <url>   Run audits against a real URL (report only, no scoring)
 
 Examples:
   playwright-pool init
