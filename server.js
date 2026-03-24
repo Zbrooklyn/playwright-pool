@@ -12,7 +12,7 @@ import fs from 'fs';
 import net from 'net';
 import os from 'os';
 import path from 'path';
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 import { createRequire } from 'module';
 import { getSchemas as getAuditBSchemas, handleAuditTool as handleAuditToolB, isAuditToolB } from './audit-tools-b.js';
 
@@ -189,6 +189,7 @@ const poolToolSchemas = [
       width: mcpBundle.z.number().optional().describe('Viewport width (default: 1280)'),
       height: mcpBundle.z.number().optional().describe('Viewport height (default: 800)'),
       label: mcpBundle.z.string().optional().describe('Optional label (e.g., "stripe", "cloudflare")'),
+      device: mcpBundle.z.string().optional().describe('Device preset for emulation (e.g., "iPhone 14", "Pixel 7", "iPad Pro 11"). Sets viewport, userAgent, deviceScaleFactor, isMobile, hasTouch. Overrides width/height. Window mode only.'),
     }),
     type: 'input',
   },
@@ -347,6 +348,201 @@ const auditToolSchemas = [
     type: 'readOnly',
   },
 ];
+
+// --- Utility tool definitions ---
+const utilityToolSchemas = [
+  {
+    name: 'snapshot_compact',
+    title: 'Compact interactive snapshot',
+    description:
+      'Get a compact snapshot of only interactive elements (buttons, links, inputs, selects). Uses ~90% fewer tokens than browser_snapshot. Best for when you need to click, type, or interact with the page.',
+    inputSchema: mcpBundle.z.object({
+      selector: mcpBundle.z.string().optional().describe('CSS selector to scope the snapshot (optional, defaults to full page)'),
+    }),
+    type: 'readOnly',
+  },
+];
+
+// --- Custom browser tool definitions (not in upstream @playwright/mcp) ---
+const customToolSchemas = [
+  {
+    name: 'browser_cookies_get',
+    title: 'Get cookies',
+    description:
+      'Get browser cookies for the current page or a specific URL. Returns name, value, domain, path, expires, httpOnly, secure, sameSite for each cookie.',
+    inputSchema: mcpBundle.z.object({
+      urls: mcpBundle.z.array(mcpBundle.z.string()).optional().describe('URLs to get cookies for (defaults to current page URL)'),
+    }),
+    type: 'readOnly',
+  },
+  {
+    name: 'browser_cookies_set',
+    title: 'Set cookie',
+    description:
+      'Set a browser cookie. Requires name and value at minimum. Domain defaults to the current page domain.',
+    inputSchema: mcpBundle.z.object({
+      name: mcpBundle.z.string().describe('Cookie name'),
+      value: mcpBundle.z.string().describe('Cookie value'),
+      url: mcpBundle.z.string().optional().describe('URL to associate the cookie with (defaults to current page URL)'),
+      domain: mcpBundle.z.string().optional().describe('Cookie domain'),
+      path: mcpBundle.z.string().optional().describe('Cookie path (default: /)'),
+      expires: mcpBundle.z.number().optional().describe('Unix timestamp for expiration (-1 for session cookie)'),
+      httpOnly: mcpBundle.z.boolean().optional().describe('HTTP-only flag'),
+      secure: mcpBundle.z.boolean().optional().describe('Secure flag'),
+      sameSite: mcpBundle.z.enum(['Strict', 'Lax', 'None']).optional().describe('SameSite attribute'),
+    }),
+    type: 'input',
+  },
+  {
+    name: 'browser_cookies_clear',
+    title: 'Clear cookies',
+    description:
+      'Clear all browser cookies, or only cookies matching a specific domain/name filter.',
+    inputSchema: mcpBundle.z.object({
+      name: mcpBundle.z.string().optional().describe('Only clear cookies with this name'),
+      domain: mcpBundle.z.string().optional().describe('Only clear cookies for this domain'),
+    }),
+    type: 'input',
+  },
+  {
+    name: 'browser_storage_get',
+    title: 'Get storage',
+    description:
+      'Read localStorage or sessionStorage for the current page. Returns all key-value pairs, or a specific key.',
+    inputSchema: mcpBundle.z.object({
+      storageType: mcpBundle.z.enum(['localStorage', 'sessionStorage']).default('localStorage').describe('Which storage to read'),
+      key: mcpBundle.z.string().optional().describe('Specific key to read (returns all if omitted)'),
+    }),
+    type: 'readOnly',
+  },
+  {
+    name: 'browser_storage_set',
+    title: 'Set storage',
+    description:
+      'Write a key-value pair to localStorage or sessionStorage for the current page.',
+    inputSchema: mcpBundle.z.object({
+      storageType: mcpBundle.z.enum(['localStorage', 'sessionStorage']).default('localStorage').describe('Which storage to write to'),
+      key: mcpBundle.z.string().describe('Storage key'),
+      value: mcpBundle.z.string().describe('Storage value'),
+    }),
+    type: 'input',
+  },
+  {
+    name: 'browser_mouse_wheel',
+    title: 'Mouse wheel scroll',
+    description:
+      'Dispatch a mouse wheel event to scroll the page or a specific element. Positive deltaY scrolls down, negative scrolls up. Positive deltaX scrolls right, negative scrolls left.',
+    inputSchema: mcpBundle.z.object({
+      deltaX: mcpBundle.z.number().default(0).describe('Horizontal scroll amount in pixels (positive = right)'),
+      deltaY: mcpBundle.z.number().default(0).describe('Vertical scroll amount in pixels (positive = down, e.g., 500 to scroll down)'),
+    }),
+    type: 'input',
+  },
+];
+
+// --- Custom tool handlers ---
+async function handleCookiesGet(params) {
+  const page = getActivePage();
+  const context = page.context();
+  const urls = params.urls || [page.url()];
+  const cookies = await context.cookies(urls);
+  if (cookies.length === 0) {
+    return { content: [{ type: 'text', text: 'No cookies found.' }] };
+  }
+  const lines = cookies.map(c =>
+    `${c.name}=${c.value} (domain=${c.domain}, path=${c.path}, expires=${c.expires === -1 ? 'session' : new Date(c.expires * 1000).toISOString()}, httpOnly=${c.httpOnly}, secure=${c.secure}, sameSite=${c.sameSite})`
+  );
+  return { content: [{ type: 'text', text: `${cookies.length} cookie(s):\n${lines.join('\n')}` }] };
+}
+
+async function handleCookiesSet(params) {
+  const page = getActivePage();
+  const context = page.context();
+  const cookie = {
+    name: params.name,
+    value: params.value,
+    url: params.url || page.url(),
+  };
+  if (params.domain) cookie.domain = params.domain;
+  if (params.path) cookie.path = params.path;
+  if (params.expires !== undefined) cookie.expires = params.expires;
+  if (params.httpOnly !== undefined) cookie.httpOnly = params.httpOnly;
+  if (params.secure !== undefined) cookie.secure = params.secure;
+  if (params.sameSite) cookie.sameSite = params.sameSite;
+  await context.addCookies([cookie]);
+  return { content: [{ type: 'text', text: `Cookie "${params.name}" set successfully.` }] };
+}
+
+async function handleCookiesClear(params) {
+  const page = getActivePage();
+  const context = page.context();
+  if (!params.name && !params.domain) {
+    await context.clearCookies();
+    return { content: [{ type: 'text', text: 'All cookies cleared.' }] };
+  }
+  // Selective clear: get all cookies, filter, then clear and re-add the ones to keep
+  const allCookies = await context.cookies();
+  const toRemove = allCookies.filter(c => {
+    if (params.name && c.name !== params.name) return false;
+    if (params.domain && !c.domain.includes(params.domain)) return false;
+    return true;
+  });
+  if (toRemove.length === 0) {
+    return { content: [{ type: 'text', text: 'No matching cookies found.' }] };
+  }
+  const toKeep = allCookies.filter(c => !toRemove.includes(c));
+  await context.clearCookies();
+  if (toKeep.length > 0) {
+    await context.addCookies(toKeep);
+  }
+  return { content: [{ type: 'text', text: `Cleared ${toRemove.length} cookie(s). ${toKeep.length} remaining.` }] };
+}
+
+async function handleStorageGet(params) {
+  const page = getActivePage();
+  const storageType = params.storageType || 'localStorage';
+  if (params.key) {
+    const value = await page.evaluate(([type, key]) => window[type].getItem(key), [storageType, params.key]);
+    if (value === null) {
+      return { content: [{ type: 'text', text: `${storageType}["${params.key}"] = null (not found)` }] };
+    }
+    return { content: [{ type: 'text', text: `${storageType}["${params.key}"] = ${value}` }] };
+  }
+  const entries = await page.evaluate((type) => {
+    const result = {};
+    for (let i = 0; i < window[type].length; i++) {
+      const key = window[type].key(i);
+      result[key] = window[type].getItem(key);
+    }
+    return result;
+  }, storageType);
+  const keys = Object.keys(entries);
+  if (keys.length === 0) {
+    return { content: [{ type: 'text', text: `${storageType} is empty.` }] };
+  }
+  const lines = keys.map(k => `  ${k} = ${entries[k]}`);
+  return { content: [{ type: 'text', text: `${storageType} (${keys.length} entries):\n${lines.join('\n')}` }] };
+}
+
+async function handleStorageSet(params) {
+  const page = getActivePage();
+  const storageType = params.storageType || 'localStorage';
+  await page.evaluate(([type, key, value]) => window[type].setItem(key, value), [storageType, params.key, params.value]);
+  return { content: [{ type: 'text', text: `${storageType}["${params.key}"] set successfully.` }] };
+}
+
+async function handleMouseWheel(params) {
+  const page = getActivePage();
+  const deltaX = params.deltaX || 0;
+  const deltaY = params.deltaY || 0;
+  await page.mouse.wheel(deltaX, deltaY);
+  const direction = [];
+  if (deltaY > 0) direction.push('down');
+  else if (deltaY < 0) direction.push('up');
+  if (deltaX > 0) direction.push('right');
+  else if (deltaX < 0) direction.push('left');
+  return { content: [{ type: 'text', text: `Scrolled ${direction.join(' and ')} (deltaX=${deltaX}, deltaY=${deltaY}).` }] };
+}
 
 // --- Audit tool helper: get active page ---
 function getActivePage() {
@@ -1518,6 +1714,226 @@ async function handleAuditVisual(params) {
   return { content: [{ type: 'text', text: result.text }] };
 }
 
+// --- Utility tool handlers ---
+
+async function handleSnapshotCompact(params) {
+  const page = getActivePage();
+  const scopeSelector = params.selector || 'body';
+
+  const elements = await page.evaluate((scope) => {
+    const root = document.querySelector(scope);
+    if (!root) return { error: `Selector "${scope}" not found` };
+
+    // Interactive element selectors
+    const SELECTORS = [
+      'a[href]',
+      'button', '[role="button"]',
+      'input', 'textarea', 'select',
+      '[tabindex]:not([tabindex="-1"])',
+      '[onclick]', '[role="link"]', '[role="tab"]', '[role="menuitem"]',
+      '[role="checkbox"]', '[role="radio"]', '[role="switch"]',
+      '[role="combobox"]', '[role="listbox"]', '[role="slider"]',
+      '[role="searchbox"]', '[role="spinbutton"]',
+      '[role="menuitemcheckbox"]', '[role="menuitemradio"]',
+    ];
+
+    const selector = SELECTORS.join(', ');
+    const nodes = root.querySelectorAll(selector);
+    const seen = new Set();
+    const results = [];
+
+    for (const node of nodes) {
+      // Deduplicate (an element can match multiple selectors)
+      if (seen.has(node)) continue;
+      seen.add(node);
+
+      // Skip invisible elements
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+      const rect = node.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) continue;
+
+      const tag = node.tagName.toLowerCase();
+      const role = node.getAttribute('role') || '';
+      const type = node.getAttribute('type') || '';
+      const href = node.getAttribute('href') || '';
+      const disabled = node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true';
+      const ariaExpanded = node.getAttribute('aria-expanded');
+      const ariaCurrent = node.getAttribute('aria-current');
+
+      // Accessible name: aria-label > aria-labelledby > alt > title > placeholder > innerText
+      let name = '';
+      const ariaLabel = node.getAttribute('aria-label');
+      const ariaLabelledBy = node.getAttribute('aria-labelledby');
+      if (ariaLabel) {
+        name = ariaLabel;
+      } else if (ariaLabelledBy) {
+        const labelEl = document.getElementById(ariaLabelledBy);
+        if (labelEl) name = (labelEl.textContent || '').trim();
+      } else if (node.getAttribute('alt')) {
+        name = node.getAttribute('alt');
+      } else if (node.getAttribute('title')) {
+        name = node.getAttribute('title');
+      } else if (node.getAttribute('placeholder')) {
+        name = node.getAttribute('placeholder');
+      } else {
+        // For inputs, check associated label
+        if (node.id) {
+          const label = document.querySelector(`label[for="${node.id}"]`);
+          if (label) name = (label.textContent || '').trim();
+        }
+        if (!name) {
+          name = (node.textContent || '').trim().replace(/\s+/g, ' ');
+        }
+      }
+      // Truncate long names
+      if (name.length > 60) name = name.slice(0, 57) + '...';
+
+      // Current value for inputs/selects/textareas
+      let value = undefined;
+      if (tag === 'input' || tag === 'textarea') {
+        if (node.value !== undefined && node.value !== '') {
+          value = node.value;
+          if (value.length > 40) value = value.slice(0, 37) + '...';
+        }
+      }
+
+      // Select options
+      let options = undefined;
+      let selectedOption = undefined;
+      if (tag === 'select') {
+        const opts = Array.from(node.options || []);
+        selectedOption = node.options[node.selectedIndex]?.text || '';
+        options = opts.slice(0, 5).map(o => o.text);
+        if (opts.length > 5) options.push(`+${opts.length - 5} more`);
+      }
+
+      // Shortest unique selector (best effort)
+      let cssSelector = '';
+      if (node.id) {
+        cssSelector = `#${node.id}`;
+      } else {
+        // tag + nth-of-type within parent
+        const parent = node.parentElement;
+        if (parent) {
+          const siblings = Array.from(parent.querySelectorAll(`:scope > ${tag}`));
+          const idx = siblings.indexOf(node);
+          cssSelector = tag + (siblings.length > 1 ? `:nth-of-type(${idx + 1})` : '');
+        } else {
+          cssSelector = tag;
+        }
+      }
+
+      results.push({
+        tag,
+        role,
+        type,
+        name,
+        href,
+        disabled,
+        expanded: ariaExpanded,
+        active: ariaCurrent === 'page' || ariaCurrent === 'true',
+        value,
+        selectedOption,
+        options,
+        cssSelector,
+      });
+    }
+
+    return { elements: results };
+  }, scopeSelector);
+
+  if (elements.error) {
+    return { content: [{ type: 'text', text: `Error: ${elements.error}` }], isError: true };
+  }
+
+  // Format as compact flat list
+  const items = elements.elements;
+  const lines = [`Interactive Elements (${items.length} found):`];
+
+  for (let i = 0; i < items.length; i++) {
+    const el = items[i];
+    const ref = `@${i + 1}`;
+    const parts = [ref.padEnd(5)];
+
+    // Determine display type
+    const tag = el.tag;
+    const role = el.role;
+
+    if (tag === 'a' || role === 'link') {
+      // Link
+      let shortHref = el.href;
+      if (shortHref) {
+        try {
+          const url = new URL(shortHref, 'http://dummy');
+          shortHref = url.pathname + (url.search || '');
+          if (shortHref.length > 50) shortHref = shortHref.slice(0, 47) + '...';
+        } catch {
+          if (shortHref.length > 50) shortHref = shortHref.slice(0, 47) + '...';
+        }
+      }
+      let line = `link "${el.name}"`;
+      if (shortHref) line += ` \u2192 ${shortHref}`;
+      if (el.active) line += ' [active]';
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (tag === 'button' || role === 'button') {
+      // Button
+      let line = `button "${el.name}"`;
+      if (el.expanded === 'true' || el.expanded === 'false') line += ' \u25BE';
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (tag === 'input') {
+      // Input
+      const inputType = el.type || 'text';
+      let line = `input[${inputType}] "${el.name}"`;
+      if (el.value !== undefined) line += ` = "${el.value}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (tag === 'textarea') {
+      let line = `textarea "${el.name}"`;
+      if (el.value !== undefined) line += ` = "${el.value}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (tag === 'select') {
+      let line = `select "${el.name}"`;
+      if (el.selectedOption) line += ` = "${el.selectedOption}"`;
+      if (el.options && el.options.length > 0) line += ` [options: ${el.options.join(', ')}]`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (role === 'tab') {
+      let line = `tab "${el.name}"`;
+      if (el.active) line += ' [active]';
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (role === 'checkbox') {
+      let line = `checkbox "${el.name}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (role === 'radio') {
+      let line = `radio "${el.name}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (role === 'menuitem' || role === 'menuitemcheckbox' || role === 'menuitemradio') {
+      let line = `menuitem "${el.name}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else {
+      // Fallback — use role if available, else tag
+      const label = role || tag;
+      let line = `${label} "${el.name}"`;
+      if (el.href) line += ` \u2192 ${el.href}`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    }
+
+    lines.push('  ' + parts.join(' '));
+  }
+
+  const output = lines.join('\n');
+  return { content: [{ type: 'text', text: output }] };
+}
+
 // --- Pool tool handlers ---
 
 async function handlePoolLaunch(params) {
@@ -1815,10 +2231,13 @@ class PoolCompositeBackend {
     // Audit tools (batch B — from audit-tools-b.js)
     const auditToolsB = getAuditBSchemas(mcpBundle.z).map(schema => toMcpTool(schema));
 
+    // Utility tools (snapshot_compact, etc.)
+    const utilityTools = utilityToolSchemas.map(schema => toMcpTool(schema));
+
     // Official browser tools (full list)
     const browserTools = this._browserToolList || [];
 
-    return [...poolTools, ...auditToolsA, ...auditToolsB, ...browserTools];
+    return [...poolTools, ...auditToolsA, ...auditToolsB, ...utilityTools, ...browserTools];
   }
 
   async callTool(name, rawArguments, progress) {
@@ -1899,6 +2318,17 @@ class PoolCompositeBackend {
       }
       try {
         return await handleAuditToolB(name, rawArguments || {}, poolEntries.get(activeId));
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Error in ${name}: ${error.message}` }], isError: true };
+      }
+    }
+
+    // Utility tools (snapshot_compact, etc.)
+    if (name === 'snapshot_compact') {
+      const schema = utilityToolSchemas.find(s => s.name === name);
+      const parsed = schema.inputSchema.parse(rawArguments || {});
+      try {
+        return await handleSnapshotCompact(parsed);
       } catch (error) {
         return { content: [{ type: 'text', text: `Error in ${name}: ${error.message}` }], isError: true };
       }

@@ -66,7 +66,7 @@ async function cmdSnap(args) {
   const { flags, positional } = parseArgs(args);
   const url = positional[0];
   if (!url) {
-    console.error('Usage: playwright-pool snap <url> [filename] [--interactive]');
+    console.error('Usage: playwright-pool snap <url> [filename] [--interactive] [--compact]');
     process.exit(1);
   }
 
@@ -74,6 +74,27 @@ async function cmdSnap(args) {
   await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() =>
     page.goto(url, { waitUntil: 'load', timeout: 30000 })
   );
+
+  const compactMode = !!flags.compact;
+
+  // --compact: flat interactive-only format (~90% fewer tokens)
+  if (compactMode) {
+    const result = await collectCompactSnapshot(page);
+    const title = await page.title();
+    const header = [
+      `Compact Snapshot: ${title}`,
+      `URL: ${url}`,
+      `Captured: ${new Date().toISOString()}`,
+      '',
+    ];
+    const output = header.join('\n') + result;
+    const filename = positional[1] || `snap-compact-${timestamp()}.md`;
+    const fs = await import('fs');
+    fs.writeFileSync(filename, output);
+    console.log(`Saved: ${filename}  (compact interactive snapshot)`);
+    await browser.close();
+    return filename;
+  }
 
   const interactiveOnly = !!flags.interactive;
 
@@ -165,6 +186,184 @@ async function cmdSnap(args) {
   await browser.close();
   return filename;
 }
+
+// ─── compact snapshot helper (shared between CLI and MCP) ────────────────────
+
+async function collectCompactSnapshot(page, scopeSelector = 'body') {
+  const elements = await page.evaluate((scope) => {
+    const root = document.querySelector(scope);
+    if (!root) return { error: `Selector "${scope}" not found` };
+
+    const SELECTORS = [
+      'a[href]',
+      'button', '[role="button"]',
+      'input', 'textarea', 'select',
+      '[tabindex]:not([tabindex="-1"])',
+      '[onclick]', '[role="link"]', '[role="tab"]', '[role="menuitem"]',
+      '[role="checkbox"]', '[role="radio"]', '[role="switch"]',
+      '[role="combobox"]', '[role="listbox"]', '[role="slider"]',
+      '[role="searchbox"]', '[role="spinbutton"]',
+      '[role="menuitemcheckbox"]', '[role="menuitemradio"]',
+    ];
+
+    const selector = SELECTORS.join(', ');
+    const nodes = root.querySelectorAll(selector);
+    const seen = new Set();
+    const results = [];
+
+    for (const node of nodes) {
+      if (seen.has(node)) continue;
+      seen.add(node);
+
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+      const rect = node.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) continue;
+
+      const tag = node.tagName.toLowerCase();
+      const role = node.getAttribute('role') || '';
+      const type = node.getAttribute('type') || '';
+      const href = node.getAttribute('href') || '';
+      const disabled = node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true';
+      const ariaExpanded = node.getAttribute('aria-expanded');
+      const ariaCurrent = node.getAttribute('aria-current');
+
+      let name = '';
+      const ariaLabel = node.getAttribute('aria-label');
+      const ariaLabelledBy = node.getAttribute('aria-labelledby');
+      if (ariaLabel) {
+        name = ariaLabel;
+      } else if (ariaLabelledBy) {
+        const labelEl = document.getElementById(ariaLabelledBy);
+        if (labelEl) name = (labelEl.textContent || '').trim();
+      } else if (node.getAttribute('alt')) {
+        name = node.getAttribute('alt');
+      } else if (node.getAttribute('title')) {
+        name = node.getAttribute('title');
+      } else if (node.getAttribute('placeholder')) {
+        name = node.getAttribute('placeholder');
+      } else {
+        if (node.id) {
+          const label = document.querySelector(`label[for="${node.id}"]`);
+          if (label) name = (label.textContent || '').trim();
+        }
+        if (!name) {
+          name = (node.textContent || '').trim().replace(/\s+/g, ' ');
+        }
+      }
+      if (name.length > 60) name = name.slice(0, 57) + '...';
+
+      let value = undefined;
+      if (tag === 'input' || tag === 'textarea') {
+        if (node.value !== undefined && node.value !== '') {
+          value = node.value;
+          if (value.length > 40) value = value.slice(0, 37) + '...';
+        }
+      }
+
+      let options = undefined;
+      let selectedOption = undefined;
+      if (tag === 'select') {
+        const opts = Array.from(node.options || []);
+        selectedOption = node.options[node.selectedIndex]?.text || '';
+        options = opts.slice(0, 5).map(o => o.text);
+        if (opts.length > 5) options.push(`+${opts.length - 5} more`);
+      }
+
+      results.push({
+        tag, role, type, name, href, disabled,
+        expanded: ariaExpanded,
+        active: ariaCurrent === 'page' || ariaCurrent === 'true',
+        value, selectedOption, options,
+      });
+    }
+
+    return { elements: results };
+  }, scopeSelector);
+
+  if (elements.error) return `Error: ${elements.error}`;
+
+  const items = elements.elements;
+  const lines = [`Interactive Elements (${items.length} found):`];
+
+  for (let i = 0; i < items.length; i++) {
+    const el = items[i];
+    const ref = `@${i + 1}`;
+    const parts = [ref.padEnd(5)];
+
+    const tag = el.tag;
+    const role = el.role;
+
+    if (tag === 'a' || role === 'link') {
+      let shortHref = el.href;
+      if (shortHref) {
+        try {
+          const url = new URL(shortHref, 'http://dummy');
+          shortHref = url.pathname + (url.search || '');
+          if (shortHref.length > 50) shortHref = shortHref.slice(0, 47) + '...';
+        } catch {
+          if (shortHref.length > 50) shortHref = shortHref.slice(0, 47) + '...';
+        }
+      }
+      let line = `link "${el.name}"`;
+      if (shortHref) line += ` \u2192 ${shortHref}`;
+      if (el.active) line += ' [active]';
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (tag === 'button' || role === 'button') {
+      let line = `button "${el.name}"`;
+      if (el.expanded === 'true' || el.expanded === 'false') line += ' \u25BE';
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (tag === 'input') {
+      const inputType = el.type || 'text';
+      let line = `input[${inputType}] "${el.name}"`;
+      if (el.value !== undefined) line += ` = "${el.value}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (tag === 'textarea') {
+      let line = `textarea "${el.name}"`;
+      if (el.value !== undefined) line += ` = "${el.value}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (tag === 'select') {
+      let line = `select "${el.name}"`;
+      if (el.selectedOption) line += ` = "${el.selectedOption}"`;
+      if (el.options && el.options.length > 0) line += ` [options: ${el.options.join(', ')}]`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (role === 'tab') {
+      let line = `tab "${el.name}"`;
+      if (el.active) line += ' [active]';
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (role === 'checkbox') {
+      let line = `checkbox "${el.name}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (role === 'radio') {
+      let line = `radio "${el.name}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else if (role === 'menuitem' || role === 'menuitemcheckbox' || role === 'menuitemradio') {
+      let line = `menuitem "${el.name}"`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    } else {
+      const label = role || tag;
+      let line = `${label} "${el.name}"`;
+      if (el.href) line += ` \u2192 ${el.href}`;
+      if (el.disabled) line += ' [disabled]';
+      parts.push(line);
+    }
+
+    lines.push('  ' + parts.join(' '));
+  }
+
+  return lines.join('\n');
+}
+
+export { collectCompactSnapshot };
 
 // ─── eval ────────────────────────────────────────────────────────────────────
 
