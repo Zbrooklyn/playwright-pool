@@ -3,7 +3,7 @@
 // playwright-pool v3 — Pool management layer on top of @playwright/mcp
 //
 // Uses the official Playwright MCP server's internal modules (BrowserServerBackend,
-// tools, config) to expose all 35 browser tools, while adding pool management
+// tools, config) to expose all 35 official browser tools, while adding pool management
 // (pool_launch, pool_close, pool_list) with golden profile auth overlay and
 // UUID session isolation.
 
@@ -153,7 +153,7 @@ async function createBackendForContext(browserContext) {
         viewport: null,
       },
     },
-    capabilities: ['vision', 'pdf', 'testing', 'tracing'],
+    capabilities: ['core-install', 'core-tabs', 'internal', 'pdf', 'testing', 'tracing', 'vision'],
     allowUnrestrictedFileAccess: true,
   });
 
@@ -1765,7 +1765,7 @@ class PoolCompositeBackend {
   async _computeToolList() {
     const config = await resolveConfig({
       browser: { browserName: 'chromium' },
-      capabilities: ['vision', 'pdf', 'testing', 'tracing'],
+      capabilities: ['core-install', 'core-tabs', 'internal', 'pdf', 'testing', 'tracing', 'vision'],
     });
     const tools = filteredTools(config);
     this._browserToolList = tools.map(t => toMcpTool(t.schema));

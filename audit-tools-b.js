@@ -138,6 +138,51 @@ export function getSchemas(z) {
       inputSchema: z.object({}),
       type: 'readOnly',
     },
+    // 23. audit_security_headers
+    {
+      name: 'audit_security_headers',
+      title: 'Security headers audit',
+      description:
+        'Inspect the current page\'s HTTP response headers for security best practices. Checks Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, and X-XSS-Protection. Rates each as present, missing, or weak.',
+      inputSchema: z.object({}),
+      type: 'readOnly',
+    },
+    // 24. audit_mixed_content
+    {
+      name: 'audit_mixed_content',
+      title: 'Mixed content detector',
+      description:
+        'Detect HTTP resources loaded on HTTPS pages. Finds all elements with src/href attributes pointing to http:// URLs on an https:// page. Reports element type, URL, and selector for each violation.',
+      inputSchema: z.object({}),
+      type: 'readOnly',
+    },
+    // 25. audit_third_party_scripts
+    {
+      name: 'audit_third_party_scripts',
+      title: 'Third-party script inventory',
+      description:
+        'Inventory all third-party scripts loaded on the page. Classifies scripts as first-party or third-party, reports domain, full URL, async/defer status, and size/timing data from the Performance API.',
+      inputSchema: z.object({}),
+      type: 'readOnly',
+    },
+    // 26. audit_cookie_compliance
+    {
+      name: 'audit_cookie_compliance',
+      title: 'Cookie compliance audit',
+      description:
+        'Analyze cookies for GDPR/CCPA compliance. Classifies cookies as necessary, functional, analytics, or marketing based on name patterns. Checks secure flag, httpOnly, sameSite, and expiry length.',
+      inputSchema: z.object({}),
+      type: 'readOnly',
+    },
+    // 27. audit_lighthouse
+    {
+      name: 'audit_lighthouse',
+      title: 'Lightweight Lighthouse-style audit',
+      description:
+        'Run a lightweight Lighthouse-style audit scoring performance, accessibility, SEO, and best practices 0–100. Aggregates data from Core Web Vitals, accessibility checks, meta tag analysis, security headers, and mixed content detection. Not the real Lighthouse — a fast approximation using existing audit logic.',
+      inputSchema: z.object({}),
+      type: 'readOnly',
+    },
   ];
 }
 
@@ -155,6 +200,11 @@ const TOOL_NAMES = new Set([
   'audit_print_layout',
   'audit_scroll_behavior',
   'audit_element_overlap',
+  'audit_security_headers',
+  'audit_mixed_content',
+  'audit_third_party_scripts',
+  'audit_cookie_compliance',
+  'audit_lighthouse',
 ]);
 
 export function isAuditToolB(name) {
@@ -176,6 +226,11 @@ export async function handleAuditTool(name, params, activeEntry) {
     case 'audit_print_layout':       return handleAuditPrintLayout(params, activeEntry);
     case 'audit_scroll_behavior':    return handleAuditScrollBehavior(params, activeEntry);
     case 'audit_element_overlap':    return handleAuditElementOverlap(params, activeEntry);
+    case 'audit_security_headers':   return handleAuditSecurityHeaders(params, activeEntry);
+    case 'audit_mixed_content':      return handleAuditMixedContent(params, activeEntry);
+    case 'audit_third_party_scripts':return handleAuditThirdPartyScripts(params, activeEntry);
+    case 'audit_cookie_compliance':  return handleAuditCookieCompliance(params, activeEntry);
+    case 'audit_lighthouse':         return handleAuditLighthouse(params, activeEntry);
     default:
       return { content: [{ type: 'text', text: `Unknown audit tool: ${name}` }], isError: true };
   }
@@ -1494,6 +1549,949 @@ async function handleAuditElementOverlap(_params, activeEntry) {
     lines.push(``);
     lines.push(`No significant element overlaps detected.`);
   }
+
+  return textResult(lines.join('\n'));
+}
+
+// ─── 23. audit_security_headers ────────────────────────────────────
+
+async function handleAuditSecurityHeaders(_params, activeEntry) {
+  const page = getPage(activeEntry);
+  const url = page.url();
+
+  // Re-fetch the current URL to capture response headers
+  let headers = {};
+  try {
+    const response = await page.request.get(url, { timeout: 10000 });
+    const allHeaders = await response.headers();
+    for (const [k, v] of Object.entries(allHeaders)) {
+      headers[k.toLowerCase()] = v;
+    }
+  } catch {
+    // Fallback: navigate again to capture headers
+    try {
+      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      if (response) {
+        const allHeaders = await response.allHeaders();
+        for (const [k, v] of Object.entries(allHeaders)) {
+          headers[k.toLowerCase()] = v;
+        }
+      }
+    } catch {
+      return textResult(`Error: Could not fetch headers for ${url}`);
+    }
+  }
+
+  const SECURITY_HEADERS = [
+    {
+      name: 'content-security-policy',
+      display: 'Content-Security-Policy',
+      description: 'Controls resources the browser is allowed to load',
+      recommendation: "Add a Content-Security-Policy header. Start with: default-src 'self'; script-src 'self'",
+      weakCheck: (val) => {
+        if (val.includes("'unsafe-inline'") && val.includes("'unsafe-eval'")) return 'weak — allows unsafe-inline AND unsafe-eval';
+        if (val.includes("'unsafe-inline'")) return 'weak — allows unsafe-inline';
+        if (val.includes("'unsafe-eval'")) return 'weak — allows unsafe-eval';
+        if (val.includes('*')) return 'weak — uses wildcard source';
+        return null;
+      },
+    },
+    {
+      name: 'strict-transport-security',
+      display: 'Strict-Transport-Security',
+      description: 'Forces HTTPS connections',
+      recommendation: 'Add: Strict-Transport-Security: max-age=31536000; includeSubDomains',
+      weakCheck: (val) => {
+        const match = val.match(/max-age=(\d+)/);
+        if (match && parseInt(match[1]) < 31536000) return 'weak — max-age less than 1 year';
+        if (!val.includes('includeSubDomains')) return 'weak — missing includeSubDomains';
+        return null;
+      },
+    },
+    {
+      name: 'x-content-type-options',
+      display: 'X-Content-Type-Options',
+      description: 'Prevents MIME type sniffing',
+      recommendation: 'Add: X-Content-Type-Options: nosniff',
+      weakCheck: (val) => {
+        if (val.toLowerCase() !== 'nosniff') return 'weak — should be "nosniff"';
+        return null;
+      },
+    },
+    {
+      name: 'x-frame-options',
+      display: 'X-Frame-Options',
+      description: 'Prevents clickjacking via iframes',
+      recommendation: 'Add: X-Frame-Options: DENY (or SAMEORIGIN if iframing is needed)',
+      weakCheck: (val) => {
+        const v = val.toUpperCase();
+        if (v !== 'DENY' && v !== 'SAMEORIGIN') return `weak — value "${val}" is non-standard`;
+        return null;
+      },
+    },
+    {
+      name: 'referrer-policy',
+      display: 'Referrer-Policy',
+      description: 'Controls how much referrer info is sent',
+      recommendation: 'Add: Referrer-Policy: strict-origin-when-cross-origin',
+      weakCheck: (val) => {
+        if (val.toLowerCase() === 'unsafe-url') return 'weak — unsafe-url leaks full URL';
+        if (val.toLowerCase() === 'no-referrer-when-downgrade') return 'weak — consider strict-origin-when-cross-origin';
+        return null;
+      },
+    },
+    {
+      name: 'permissions-policy',
+      display: 'Permissions-Policy',
+      description: 'Controls browser features (camera, mic, geolocation, etc.)',
+      recommendation: 'Add: Permissions-Policy: camera=(), microphone=(), geolocation=()',
+      weakCheck: () => null,
+    },
+    {
+      name: 'x-xss-protection',
+      display: 'X-XSS-Protection',
+      description: 'Legacy XSS filter (deprecated but still checked)',
+      recommendation: 'Add: X-XSS-Protection: 0 (modern CSP is preferred instead)',
+      weakCheck: (val) => {
+        if (val === '0') return null;
+        if (!val.includes('mode=block')) return 'weak — if enabled, should include mode=block';
+        return null;
+      },
+    },
+  ];
+
+  const results = [];
+  let presentCount = 0;
+  let missingCount = 0;
+  let weakCount = 0;
+
+  for (const header of SECURITY_HEADERS) {
+    const value = headers[header.name];
+    if (!value) {
+      results.push({ header: header.display, status: 'MISSING', value: '', description: header.description, recommendation: header.recommendation });
+      missingCount++;
+    } else {
+      const weakMsg = header.weakCheck(value);
+      if (weakMsg) {
+        results.push({ header: header.display, status: 'WEAK', value: value.slice(0, 80), description: header.description, recommendation: weakMsg });
+        weakCount++;
+      } else {
+        results.push({ header: header.display, status: 'present', value: value.slice(0, 80), description: header.description, recommendation: '' });
+        presentCount++;
+      }
+    }
+  }
+
+  const isHttps = url.startsWith('https://');
+
+  const lines = [
+    `## Security Headers Audit`,
+    ``,
+    `**URL:** ${url}`,
+    `**Protocol:** ${isHttps ? 'HTTPS' : 'HTTP (not secure)'}`,
+    `**Present:** ${presentCount}/${SECURITY_HEADERS.length}`,
+    `**Missing:** ${missingCount}`,
+    `**Weak:** ${weakCount}`,
+    ``,
+    `### Header Details`,
+    `| Header | Status | Value |`,
+    `|--------|--------|-------|`,
+  ];
+
+  for (const r of results) {
+    const statusIcon = r.status === 'present' ? 'OK' : r.status;
+    lines.push(`| ${r.header} | ${statusIcon} | ${r.value || '—'} |`);
+  }
+
+  const issues = results.filter(r => r.status !== 'present');
+  if (issues.length > 0) {
+    lines.push(``);
+    lines.push(`### Recommendations`);
+    for (const r of issues) {
+      lines.push(`- **${r.header}** (${r.status}): ${r.recommendation}`);
+    }
+  }
+
+  if (!isHttps) {
+    lines.push(``);
+    lines.push(`### Warning`);
+    lines.push(`Page is served over HTTP. HTTPS is required for most security headers to be effective.`);
+  }
+
+  return textResult(lines.join('\n'));
+}
+
+// ─── 24. audit_mixed_content ──────────────────────────────────────
+
+async function handleAuditMixedContent(_params, activeEntry) {
+  const page = getPage(activeEntry);
+
+  const result = await page.evaluate(() => {
+    const pageUrl = window.location.href;
+    const isHttps = window.location.protocol === 'https:';
+    const mixedItems = [];
+
+    if (!isHttps) {
+      return { isHttps: false, pageUrl, mixedItems: [] };
+    }
+
+    // Check all elements with src attribute
+    const srcElements = document.querySelectorAll('[src]');
+    for (const el of srcElements) {
+      const src = el.getAttribute('src');
+      if (!src) continue;
+      try {
+        const resolved = new URL(src, pageUrl).href;
+        if (resolved.startsWith('http://')) {
+          const tag = el.tagName.toLowerCase();
+          let selector = tag;
+          if (el.id) selector += `#${el.id}`;
+          else if (el.className && typeof el.className === 'string') {
+            const cls = el.className.trim().split(/\s+/).slice(0, 2).join('.');
+            if (cls) selector += `.${cls}`;
+          }
+          mixedItems.push({
+            elementType: tag,
+            attribute: 'src',
+            url: resolved,
+            selector,
+            isActive: ['script', 'iframe'].includes(tag),
+          });
+        }
+      } catch { /* invalid URL */ }
+    }
+
+    // Check all elements with href attribute (link, a pointing to resources)
+    const hrefElements = document.querySelectorAll('link[href], a[href]');
+    for (const el of hrefElements) {
+      const href = el.getAttribute('href');
+      if (!href) continue;
+      try {
+        const resolved = new URL(href, pageUrl).href;
+        if (resolved.startsWith('http://')) {
+          const tag = el.tagName.toLowerCase();
+          const rel = el.getAttribute('rel') || '';
+          if (tag === 'link' && !['stylesheet', 'preload', 'prefetch', 'icon'].includes(rel)) continue;
+
+          let selector = tag;
+          if (el.id) selector += `#${el.id}`;
+          else if (el.className && typeof el.className === 'string') {
+            const cls = el.className.trim().split(/\s+/).slice(0, 2).join('.');
+            if (cls) selector += `.${cls}`;
+          }
+          if (rel) selector += `[rel="${rel}"]`;
+
+          mixedItems.push({
+            elementType: tag,
+            attribute: 'href',
+            url: resolved,
+            selector,
+            isActive: tag === 'link' && rel === 'stylesheet',
+          });
+        }
+      } catch { /* invalid URL */ }
+    }
+
+    // Check CSS background-image URLs via computed styles
+    const visibleElements = document.querySelectorAll('body *');
+    for (const el of visibleElements) {
+      const cs = window.getComputedStyle(el);
+      const bg = cs.backgroundImage;
+      if (!bg || bg === 'none') continue;
+      const urlMatch = bg.match(/url\(["']?(http:\/\/[^"')]+)["']?\)/);
+      if (urlMatch) {
+        const tag = el.tagName.toLowerCase();
+        let selector = tag;
+        if (el.id) selector += `#${el.id}`;
+        else if (el.className && typeof el.className === 'string') {
+          const cls = el.className.trim().split(/\s+/).slice(0, 2).join('.');
+          if (cls) selector += `.${cls}`;
+        }
+        mixedItems.push({
+          elementType: tag,
+          attribute: 'background-image',
+          url: urlMatch[1],
+          selector,
+          isActive: false,
+        });
+      }
+    }
+
+    return { isHttps, pageUrl, mixedItems };
+  });
+
+  const activeContent = result.mixedItems.filter(i => i.isActive);
+  const passiveContent = result.mixedItems.filter(i => !i.isActive);
+
+  const lines = [
+    `## Mixed Content Audit`,
+    ``,
+    `**URL:** ${result.pageUrl}`,
+    `**Protocol:** ${result.isHttps ? 'HTTPS' : 'HTTP'}`,
+  ];
+
+  if (!result.isHttps) {
+    lines.push(``, `Page is served over HTTP — mixed content detection is not applicable.`);
+    return textResult(lines.join('\n'));
+  }
+
+  lines.push(
+    `**Total mixed content resources:** ${result.mixedItems.length}`,
+    `**Active mixed content (blocks/scripts):** ${activeContent.length}`,
+    `**Passive mixed content (images/media):** ${passiveContent.length}`,
+  );
+
+  if (result.mixedItems.length === 0) {
+    lines.push(``, `No mixed content detected. All resources are loaded over HTTPS.`);
+  } else {
+    if (activeContent.length > 0) {
+      lines.push(``, `### Active Mixed Content (HIGH RISK — may be blocked by browser)`);
+      lines.push(`| Element | Attribute | URL | Selector |`);
+      lines.push(`|---------|-----------|-----|----------|`);
+      for (const item of activeContent) {
+        lines.push(`| ${item.elementType} | ${item.attribute} | \`${item.url.slice(0, 70)}\` | \`${item.selector}\` |`);
+      }
+    }
+
+    if (passiveContent.length > 0) {
+      lines.push(``, `### Passive Mixed Content (lower risk — may show warnings)`);
+      lines.push(`| Element | Attribute | URL | Selector |`);
+      lines.push(`|---------|-----------|-----|----------|`);
+      for (const item of passiveContent) {
+        lines.push(`| ${item.elementType} | ${item.attribute} | \`${item.url.slice(0, 70)}\` | \`${item.selector}\` |`);
+      }
+    }
+
+    lines.push(``, `### Recommendations`);
+    lines.push(`- Replace all \`http://\` URLs with \`https://\` equivalents`);
+    if (activeContent.length > 0) {
+      lines.push(`- **URGENT:** Active mixed content (scripts/iframes) is blocked by modern browsers and will break functionality`);
+    }
+  }
+
+  return textResult(lines.join('\n'));
+}
+
+// ─── 25. audit_third_party_scripts ────────────────────────────────
+
+async function handleAuditThirdPartyScripts(_params, activeEntry) {
+  const page = getPage(activeEntry);
+
+  const result = await page.evaluate(() => {
+    const pageOrigin = window.location.origin;
+    const scripts = [];
+
+    const scriptEls = document.querySelectorAll('script');
+    for (const el of scriptEls) {
+      const src = el.getAttribute('src');
+      if (!src) {
+        scripts.push({
+          type: 'inline',
+          domain: '(inline)',
+          url: '',
+          async: false,
+          defer: false,
+          size: (el.textContent || '').length,
+          isThirdParty: false,
+        });
+        continue;
+      }
+
+      let resolvedUrl = '';
+      let domain = '';
+      let isThirdParty = false;
+      try {
+        const parsed = new URL(src, window.location.href);
+        resolvedUrl = parsed.href;
+        domain = parsed.hostname;
+        isThirdParty = parsed.origin !== pageOrigin;
+      } catch {
+        resolvedUrl = src;
+        domain = '(invalid)';
+      }
+
+      scripts.push({
+        type: isThirdParty ? 'third-party' : 'first-party',
+        domain,
+        url: resolvedUrl,
+        async: el.async,
+        defer: el.defer,
+        size: 0,
+        isThirdParty,
+      });
+    }
+
+    // Get timing/size data from Performance API
+    const perfEntries = performance.getEntriesByType('resource')
+      .filter(e => e.initiatorType === 'script');
+
+    for (const script of scripts) {
+      if (!script.url) continue;
+      const perf = perfEntries.find(e => e.name === script.url);
+      if (perf) {
+        script.transferSize = perf.transferSize || 0;
+        script.encodedBodySize = perf.encodedBodySize || 0;
+        script.decodedBodySize = perf.decodedBodySize || 0;
+        script.duration = Math.round(perf.duration);
+        script.size = perf.decodedBodySize || perf.transferSize || 0;
+      }
+    }
+
+    return { pageOrigin, scripts };
+  });
+
+  const firstParty = result.scripts.filter(s => !s.isThirdParty);
+  const thirdParty = result.scripts.filter(s => s.isThirdParty);
+
+  // Group third-party scripts by domain
+  const byDomain = {};
+  for (const s of thirdParty) {
+    if (!byDomain[s.domain]) byDomain[s.domain] = [];
+    byDomain[s.domain].push(s);
+  }
+
+  const totalThirdPartySize = thirdParty.reduce((sum, s) => sum + (s.size || 0), 0);
+  const totalFirstPartySize = firstParty.reduce((sum, s) => sum + (s.size || 0), 0);
+
+  function formatSize(bytes) {
+    if (bytes === 0) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  const lines = [
+    `## Third-Party Scripts Audit`,
+    ``,
+    `**Origin:** ${result.pageOrigin}`,
+    `**Total scripts:** ${result.scripts.length}`,
+    `**First-party:** ${firstParty.length} (${formatSize(totalFirstPartySize)})`,
+    `**Third-party:** ${thirdParty.length} (${formatSize(totalThirdPartySize)})`,
+    `**Inline scripts:** ${result.scripts.filter(s => s.type === 'inline').length}`,
+    `**Third-party domains:** ${Object.keys(byDomain).length}`,
+  ];
+
+  if (thirdParty.length > 0) {
+    lines.push(``, `### Third-Party Scripts by Domain`);
+
+    for (const [domain, domScripts] of Object.entries(byDomain).sort((a, b) => b[1].length - a[1].length)) {
+      const domainSize = domScripts.reduce((sum, s) => sum + (s.size || 0), 0);
+      lines.push(``, `**${domain}** (${domScripts.length} script${domScripts.length > 1 ? 's' : ''}, ${formatSize(domainSize)})`);
+      for (const s of domScripts) {
+        const flags = [];
+        if (s.async) flags.push('async');
+        if (s.defer) flags.push('defer');
+        if (!s.async && !s.defer) flags.push('RENDER-BLOCKING');
+        const sizeStr = s.size ? formatSize(s.size) : '—';
+        const durationStr = s.duration !== undefined ? `${s.duration}ms` : '—';
+        lines.push(`  - \`${s.url.slice(0, 80)}\` [${flags.join(', ')}] ${sizeStr}, ${durationStr}`);
+      }
+    }
+
+    const renderBlocking = thirdParty.filter(s => !s.async && !s.defer);
+    if (renderBlocking.length > 0) {
+      lines.push(``, `### Warnings`);
+      lines.push(`**${renderBlocking.length} render-blocking third-party script(s)** — add \`async\` or \`defer\` attribute:`);
+      for (const s of renderBlocking) {
+        lines.push(`- \`${s.url.slice(0, 80)}\` (${s.domain})`);
+      }
+    }
+  } else {
+    lines.push(``, `No third-party scripts detected.`);
+  }
+
+  if (firstParty.length > 0) {
+    lines.push(``, `### First-Party Scripts`);
+    lines.push(`| URL | Async | Defer | Size | Duration |`);
+    lines.push(`|-----|-------|-------|------|----------|`);
+    for (const s of firstParty) {
+      if (s.type === 'inline') {
+        lines.push(`| (inline, ${formatSize(s.size)}) | — | — | ${formatSize(s.size)} | — |`);
+      } else {
+        const sizeStr = s.size ? formatSize(s.size) : '—';
+        const durationStr = s.duration !== undefined ? `${s.duration}ms` : '—';
+        lines.push(`| \`${s.url.slice(0, 60)}\` | ${s.async ? 'Yes' : 'No'} | ${s.defer ? 'Yes' : 'No'} | ${sizeStr} | ${durationStr} |`);
+      }
+    }
+  }
+
+  return textResult(lines.join('\n'));
+}
+
+// ─── 26. audit_cookie_compliance ──────────────────────────────────
+
+async function handleAuditCookieCompliance(_params, activeEntry) {
+  const page = getPage(activeEntry);
+  const url = page.url();
+
+  const cookies = await activeEntry.browserContext.cookies();
+
+  function classifyCookie(name) {
+    const n = name.toLowerCase();
+
+    const analyticsPatterns = [
+      /^_ga/, /^_gid/, /^_gat/, /^__utm/, /^_hjid/, /^_hjSession/, /^_hj/,
+      /^ajs_/, /^mp_/, /^amplitude/, /^_clck/, /^_clsk/, /^__hstc/, /^hubspot/,
+      /^_pk_/, /^_paq/, /^plausible/,
+    ];
+    if (analyticsPatterns.some(p => p.test(n))) return 'analytics';
+
+    const marketingPatterns = [
+      /^_fbp/, /^_fbc/, /^fr$/, /^_gcl/, /^IDE$/, /^DSID$/, /^__gads/,
+      /^_uet/, /^_ttp/, /^_tt_/, /^_pin_/, /^li_/, /^bcookie/, /^bscookie/,
+      /^_rdt_/, /^muc_ads/, /^personalization_id/,
+    ];
+    if (marketingPatterns.some(p => p.test(n))) return 'marketing';
+
+    const necessaryPatterns = [
+      /^session/, /^csrf/, /^xsrf/, /^token/, /^auth/, /^__Host-/, /^__Secure-/,
+      /^connect\.sid/, /^PHPSESSID/, /^JSESSIONID/, /^ASP\.NET_SessionId/,
+      /^wp-settings/, /^wordpress_logged_in/, /^__cf_bm/, /^cf_clearance/,
+      /^__cfruid/, /^_csrf/,
+    ];
+    if (necessaryPatterns.some(p => p.test(n))) return 'necessary';
+
+    const functionalPatterns = [
+      /^lang/, /^locale/, /^theme/, /^dark_?mode/, /^cookie_?consent/,
+      /^preferences/, /^timezone/, /^currency/, /^country/,
+    ];
+    if (functionalPatterns.some(p => p.test(n))) return 'functional';
+
+    return 'unclassified';
+  }
+
+  const now = Date.now() / 1000;
+  const ONE_YEAR = 365 * 24 * 60 * 60;
+  const issues = [];
+
+  const classified = cookies.map(cookie => {
+    const category = classifyCookie(cookie.name);
+    const cookieIssues = [];
+
+    if (!cookie.secure) {
+      cookieIssues.push('Missing Secure flag');
+    }
+
+    if (!cookie.httpOnly && category === 'necessary') {
+      cookieIssues.push('Missing HttpOnly flag (recommended for session/auth cookies)');
+    }
+
+    if (!cookie.sameSite || cookie.sameSite === 'None') {
+      if (cookie.sameSite === 'None' && !cookie.secure) {
+        cookieIssues.push('SameSite=None requires Secure flag');
+      }
+      if (!cookie.sameSite) {
+        cookieIssues.push('Missing SameSite attribute');
+      }
+    }
+
+    let expiryInfo = 'Session';
+    if (cookie.expires && cookie.expires > 0) {
+      const ttl = cookie.expires - now;
+      const days = Math.round(ttl / (24 * 60 * 60));
+      expiryInfo = `${days} days`;
+
+      if (ttl > ONE_YEAR && (category === 'analytics' || category === 'marketing')) {
+        cookieIssues.push(`Expires in ${days} days — GDPR recommends max 13 months for tracking cookies`);
+      }
+      if (ttl > 2 * ONE_YEAR) {
+        cookieIssues.push(`Expires in ${days} days — excessively long lifetime`);
+      }
+    }
+
+    if (cookieIssues.length > 0) {
+      issues.push({ name: cookie.name, category, issues: cookieIssues });
+    }
+
+    return {
+      name: cookie.name,
+      domain: cookie.domain,
+      path: cookie.path,
+      category,
+      secure: cookie.secure,
+      httpOnly: cookie.httpOnly,
+      sameSite: cookie.sameSite || 'None',
+      expiry: expiryInfo,
+      issues: cookieIssues,
+    };
+  });
+
+  const counts = { necessary: 0, functional: 0, analytics: 0, marketing: 0, unclassified: 0 };
+  for (const c of classified) {
+    counts[c.category] = (counts[c.category] || 0) + 1;
+  }
+
+  const lines = [
+    `## Cookie Compliance Audit`,
+    ``,
+    `**URL:** ${url}`,
+    `**Total cookies:** ${cookies.length}`,
+    ``,
+    `### Cookies by Category`,
+    `| Category | Count |`,
+    `|----------|-------|`,
+    `| Necessary (session/auth) | ${counts.necessary} |`,
+    `| Functional (preferences) | ${counts.functional} |`,
+    `| Analytics (tracking) | ${counts.analytics} |`,
+    `| Marketing (advertising) | ${counts.marketing} |`,
+    `| Unclassified | ${counts.unclassified} |`,
+  ];
+
+  if (issues.length > 0) {
+    lines.push(``, `### Compliance Issues (${issues.length})`);
+    for (const issue of issues) {
+      lines.push(`- **${issue.name}** (${issue.category}):`);
+      for (const i of issue.issues) {
+        lines.push(`  - ${i}`);
+      }
+    }
+  } else {
+    lines.push(``, `No compliance issues detected.`);
+  }
+
+  lines.push(``, `### All Cookies`);
+  lines.push(`| Name | Domain | Category | Secure | HttpOnly | SameSite | Expiry |`);
+  lines.push(`|------|--------|----------|--------|----------|----------|--------|`);
+  for (const c of classified) {
+    lines.push(`| ${c.name} | ${c.domain} | ${c.category} | ${c.secure ? 'Yes' : 'NO'} | ${c.httpOnly ? 'Yes' : 'No'} | ${c.sameSite} | ${c.expiry} |`);
+  }
+
+  const hasAnalyticsOrMarketing = counts.analytics > 0 || counts.marketing > 0;
+  if (hasAnalyticsOrMarketing) {
+    lines.push(``, `### GDPR/CCPA Recommendations`);
+    lines.push(`- **Consent required:** ${counts.analytics + counts.marketing} analytics/marketing cookie(s) detected`);
+    lines.push(`- Ensure a cookie consent banner is shown before setting non-essential cookies`);
+    lines.push(`- Analytics and marketing cookies should only be set after explicit user consent`);
+    lines.push(`- Provide a mechanism for users to withdraw consent`);
+  }
+
+  return textResult(lines.join('\n'));
+}
+
+// ─── 27. audit_lighthouse ─────────────────────────────────────────
+
+async function handleAuditLighthouse(_params, activeEntry) {
+  const page = getPage(activeEntry);
+  const url = page.url();
+
+  // ── Performance Score (0–100) ──
+  const perfData = await page.evaluate(() => {
+    const result = { lcp: null, cls: null, fcp: null, imageIssues: 0, totalImages: 0, fontIssues: 0 };
+
+    // LCP
+    try {
+      const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
+      if (lcpEntries.length > 0) {
+        result.lcp = lcpEntries[lcpEntries.length - 1].startTime;
+      }
+    } catch { /* not available */ }
+
+    // CLS via layout-shift entries
+    try {
+      const clsEntries = performance.getEntriesByType('layout-shift');
+      let clsScore = 0;
+      for (const entry of clsEntries) {
+        if (!entry.hadRecentInput) clsScore += entry.value;
+      }
+      result.cls = clsScore;
+    } catch { /* not available */ }
+
+    // FCP
+    try {
+      const paintEntries = performance.getEntriesByType('paint');
+      const fcp = paintEntries.find(e => e.name === 'first-contentful-paint');
+      if (fcp) result.fcp = fcp.startTime;
+    } catch { /* not available */ }
+
+    // Image optimization check
+    const images = document.querySelectorAll('img');
+    result.totalImages = images.length;
+    for (const img of images) {
+      if (!img.loading) result.imageIssues++;
+      if (!img.getAttribute('width') || !img.getAttribute('height')) result.imageIssues++;
+      if (!img.hasAttribute('alt')) result.imageIssues++;
+    }
+
+    // Font loading check
+    const fontEntries = performance.getEntriesByType('resource').filter(e =>
+      e.initiatorType === 'css' || e.name.match(/\.(woff2?|ttf|otf|eot)/i)
+    );
+    const nonPreloaded = fontEntries.filter(e => e.startTime > 500);
+    result.fontIssues = nonPreloaded.length;
+
+    return result;
+  });
+
+  let perfScore = 100;
+  const perfIssues = [];
+
+  if (perfData.lcp !== null) {
+    if (perfData.lcp > 4000) { perfScore -= 30; perfIssues.push(`LCP: ${(perfData.lcp / 1000).toFixed(1)}s (poor — target <2.5s)`); }
+    else if (perfData.lcp > 2500) { perfScore -= 15; perfIssues.push(`LCP: ${(perfData.lcp / 1000).toFixed(1)}s (needs improvement — target <2.5s)`); }
+  } else {
+    perfScore -= 5;
+  }
+
+  if (perfData.cls !== null) {
+    if (perfData.cls > 0.25) { perfScore -= 25; perfIssues.push(`CLS: ${perfData.cls.toFixed(3)} (poor — target <0.1)`); }
+    else if (perfData.cls > 0.1) { perfScore -= 10; perfIssues.push(`CLS: ${perfData.cls.toFixed(3)} (needs improvement — target <0.1)`); }
+  }
+
+  if (perfData.fcp !== null) {
+    if (perfData.fcp > 3000) { perfScore -= 20; perfIssues.push(`FCP: ${(perfData.fcp / 1000).toFixed(1)}s (poor — target <1.8s)`); }
+    else if (perfData.fcp > 1800) { perfScore -= 10; perfIssues.push(`FCP: ${(perfData.fcp / 1000).toFixed(1)}s (needs improvement — target <1.8s)`); }
+  }
+
+  if (perfData.totalImages > 0) {
+    const imgPenalty = Math.min(15, Math.round((perfData.imageIssues / Math.max(1, perfData.totalImages)) * 15));
+    if (imgPenalty > 0) { perfScore -= imgPenalty; perfIssues.push(`${perfData.imageIssues} image optimization issue(s) across ${perfData.totalImages} images`); }
+  }
+
+  if (perfData.fontIssues > 0) {
+    perfScore -= Math.min(5, perfData.fontIssues * 2);
+    perfIssues.push(`${perfData.fontIssues} late-loading font resource(s)`);
+  }
+
+  perfScore = Math.max(0, Math.min(100, perfScore));
+
+  // ── Accessibility Score (0–100) ──
+  const a11yData = await page.evaluate(() => {
+    let total = 0;
+    let issues = 0;
+    const problems = [];
+
+    const imgs = document.querySelectorAll('img');
+    total += imgs.length;
+    for (const img of imgs) {
+      if (!img.hasAttribute('alt')) { issues++; problems.push('Image missing alt attribute'); }
+    }
+
+    const inputs = document.querySelectorAll('input:not([type="hidden"]), select, textarea');
+    total += inputs.length;
+    for (const input of inputs) {
+      const hasLabel = input.id && document.querySelector(`label[for="${input.id}"]`);
+      const hasAriaLabel = input.getAttribute('aria-label') || input.getAttribute('aria-labelledby');
+      const wrappedInLabel = input.closest('label');
+      if (!hasLabel && !hasAriaLabel && !wrappedInLabel) { issues++; problems.push('Input missing label/aria-label'); }
+    }
+
+    const buttons = document.querySelectorAll('button, [role="button"]');
+    total += buttons.length;
+    for (const btn of buttons) {
+      const text = (btn.textContent || '').trim();
+      const ariaLabel = btn.getAttribute('aria-label') || btn.getAttribute('aria-labelledby');
+      if (!text && !ariaLabel) { issues++; problems.push('Button missing accessible name'); }
+    }
+
+    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    let lastLevel = 0;
+    let skippedHeadings = 0;
+    for (const h of headings) {
+      const level = parseInt(h.tagName[1]);
+      if (level > lastLevel + 1 && lastLevel > 0) skippedHeadings++;
+      lastLevel = level;
+    }
+    if (skippedHeadings > 0) { issues += skippedHeadings; problems.push(`${skippedHeadings} heading level skip(s)`); }
+
+    const html = document.documentElement;
+    const lang = html.getAttribute('lang');
+    if (!lang) { issues++; problems.push('Missing lang attribute on <html>'); }
+
+    const landmarks = document.querySelectorAll('main, [role="main"], nav, [role="navigation"], [role="banner"], [role="contentinfo"]');
+    if (landmarks.length === 0) { issues++; problems.push('No ARIA landmark roles or semantic landmarks found'); }
+
+    const skipLink = document.querySelector('a[href="#main"], a[href="#content"], .skip-link, .skip-nav, [class*="skip"]');
+    if (!skipLink) { issues++; problems.push('No skip navigation link found'); }
+
+    total = Math.max(total, 1);
+    return { total, issues, problems: [...new Set(problems)].slice(0, 15) };
+  });
+
+  let a11yScore = 100;
+  const a11yIssues = a11yData.problems;
+  if (a11yData.total > 0) {
+    const issueRatio = a11yData.issues / a11yData.total;
+    a11yScore = Math.max(0, Math.round(100 - issueRatio * 100 - a11yData.problems.length * 3));
+  }
+  a11yScore = Math.max(0, Math.min(100, a11yScore));
+
+  // ── SEO Score (0–100) ──
+  const seoData = await page.evaluate(() => {
+    const issues = [];
+    let score = 100;
+
+    const title = document.title;
+    if (!title) { score -= 15; issues.push('Missing <title> tag'); }
+    else if (title.length < 10) { score -= 5; issues.push(`Title too short: "${title}" (${title.length} chars, recommend 30-60)`); }
+    else if (title.length > 70) { score -= 5; issues.push(`Title too long (${title.length} chars, recommend 30-60)`); }
+
+    const desc = document.querySelector('meta[name="description"]');
+    if (!desc || !desc.content) { score -= 15; issues.push('Missing meta description'); }
+    else if (desc.content.length < 50) { score -= 5; issues.push(`Meta description too short (${desc.content.length} chars, recommend 120-160)`); }
+    else if (desc.content.length > 160) { score -= 5; issues.push(`Meta description too long (${desc.content.length} chars, recommend 120-160)`); }
+
+    const canonical = document.querySelector('link[rel="canonical"]');
+    if (!canonical) { score -= 10; issues.push('Missing canonical URL'); }
+
+    const h1s = document.querySelectorAll('h1');
+    if (h1s.length === 0) { score -= 10; issues.push('Missing <h1> tag'); }
+    else if (h1s.length > 1) { score -= 5; issues.push(`Multiple <h1> tags (${h1s.length}) — use only one`); }
+
+    const viewport = document.querySelector('meta[name="viewport"]');
+    if (!viewport) { score -= 10; issues.push('Missing viewport meta tag'); }
+
+    const og = document.querySelector('meta[property="og:title"], meta[property="og:description"]');
+    if (!og) { score -= 5; issues.push('Missing Open Graph meta tags'); }
+
+    const jsonLd = document.querySelector('script[type="application/ld+json"]');
+    if (!jsonLd) { score -= 5; issues.push('No structured data (JSON-LD) found'); }
+
+    const imgsNoAlt = document.querySelectorAll('img:not([alt])');
+    if (imgsNoAlt.length > 0) { score -= 5; issues.push(`${imgsNoAlt.length} image(s) missing alt text`); }
+
+    const robots = document.querySelector('meta[name="robots"]');
+    if (robots && robots.content.includes('noindex')) {
+      score -= 10; issues.push('Page is set to noindex');
+    }
+
+    const lang = document.documentElement.getAttribute('lang');
+    if (!lang) { score -= 5; issues.push('Missing lang attribute on <html>'); }
+
+    return { score: Math.max(0, score), issues };
+  });
+
+  const seoScore = seoData.score;
+  const seoIssues = seoData.issues;
+
+  // ── Best Practices Score (0–100) ──
+  let bpScore = 100;
+  const bpIssues = [];
+
+  const isHttps = url.startsWith('https://');
+  if (!isHttps) { bpScore -= 20; bpIssues.push('Page not served over HTTPS'); }
+
+  // Quick security headers check
+  let secHeaderCount = 0;
+  try {
+    const response = await page.request.get(url, { timeout: 10000 });
+    const respHeaders = await response.headers();
+    const normalized = {};
+    for (const [k, v] of Object.entries(respHeaders)) normalized[k.toLowerCase()] = v;
+
+    const criticalHeaders = ['content-security-policy', 'strict-transport-security', 'x-content-type-options', 'x-frame-options'];
+    for (const h of criticalHeaders) {
+      if (normalized[h]) secHeaderCount++;
+    }
+    const missing = criticalHeaders.filter(h => !normalized[h]);
+    if (missing.length > 0) {
+      const penalty = missing.length * 5;
+      bpScore -= penalty;
+      bpIssues.push(`Missing security headers: ${missing.join(', ')}`);
+    }
+  } catch {
+    bpScore -= 10;
+    bpIssues.push('Could not fetch response headers');
+  }
+
+  // Check mixed content inline
+  const mixedContentCount = await page.evaluate(() => {
+    if (window.location.protocol !== 'https:') return 0;
+    let count = 0;
+    const srcEls = document.querySelectorAll('[src]');
+    for (const el of srcEls) {
+      const src = el.getAttribute('src');
+      if (src) {
+        try {
+          const resolved = new URL(src, window.location.href).href;
+          if (resolved.startsWith('http://')) count++;
+        } catch { /* skip */ }
+      }
+    }
+    return count;
+  });
+
+  if (mixedContentCount > 0) {
+    bpScore -= 15;
+    bpIssues.push(`${mixedContentCount} mixed content resource(s) found`);
+  }
+
+  // Check for common best-practice issues
+  const bpChecks = await page.evaluate(() => {
+    const issues = [];
+
+    if (document.querySelector('marquee, blink, center, font, big, strike')) {
+      issues.push('Page uses deprecated HTML elements');
+    }
+
+    if (!document.doctype) {
+      issues.push('Missing DOCTYPE declaration');
+    }
+
+    const charset = document.querySelector('meta[charset]');
+    if (!charset) {
+      issues.push('Missing charset declaration');
+    }
+
+    return issues;
+  });
+
+  for (const issue of bpChecks) {
+    bpScore -= 5;
+    bpIssues.push(issue);
+  }
+
+  bpScore = Math.max(0, Math.min(100, bpScore));
+
+  // ── Overall Score ──
+  const overallScore = Math.round((perfScore + a11yScore + seoScore + bpScore) / 4);
+
+  function scoreColor(score) {
+    if (score >= 90) return 'GOOD';
+    if (score >= 50) return 'NEEDS IMPROVEMENT';
+    return 'POOR';
+  }
+
+  const lines = [
+    `## Lighthouse-Style Audit`,
+    ``,
+    `**URL:** ${url}`,
+    `**Overall Score:** ${overallScore}/100 (${scoreColor(overallScore)})`,
+    ``,
+    `### Category Scores`,
+    `| Category | Score | Rating |`,
+    `|----------|-------|--------|`,
+    `| Performance | ${perfScore} | ${scoreColor(perfScore)} |`,
+    `| Accessibility | ${a11yScore} | ${scoreColor(a11yScore)} |`,
+    `| SEO | ${seoScore} | ${scoreColor(seoScore)} |`,
+    `| Best Practices | ${bpScore} | ${scoreColor(bpScore)} |`,
+    `| **Overall** | **${overallScore}** | **${scoreColor(overallScore)}** |`,
+  ];
+
+  const allIssues = [
+    ...perfIssues.map(i => ({ category: 'Performance', issue: i })),
+    ...a11yIssues.map(i => ({ category: 'Accessibility', issue: i })),
+    ...seoIssues.map(i => ({ category: 'SEO', issue: i })),
+    ...bpIssues.map(i => ({ category: 'Best Practices', issue: i })),
+  ];
+
+  if (allIssues.length > 0) {
+    lines.push(``, `### Top Issues to Fix (${allIssues.length})`);
+    for (const item of allIssues.slice(0, 20)) {
+      lines.push(`- **[${item.category}]** ${item.issue}`);
+    }
+  } else {
+    lines.push(``, `No issues detected across all categories.`);
+  }
+
+  lines.push(``, `### Performance Details`);
+  if (perfData.lcp !== null) lines.push(`- LCP: ${(perfData.lcp / 1000).toFixed(2)}s`);
+  if (perfData.cls !== null) lines.push(`- CLS: ${perfData.cls.toFixed(3)}`);
+  if (perfData.fcp !== null) lines.push(`- FCP: ${(perfData.fcp / 1000).toFixed(2)}s`);
+  lines.push(`- Images: ${perfData.totalImages} total, ${perfData.imageIssues} issue(s)`);
+  lines.push(`- Late-loading fonts: ${perfData.fontIssues}`);
+
+  lines.push(``, `---`);
+  lines.push(`*Note: This is a lightweight approximation, not a full Lighthouse audit. For comprehensive results, run the real Lighthouse CLI or Chrome DevTools audit.*`);
 
   return textResult(lines.join('\n'));
 }

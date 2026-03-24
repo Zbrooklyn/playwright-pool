@@ -1,10 +1,11 @@
 {
   "name": "@anthropic-tools/playwright-pool",
-  "version": "3.0.0",
+  "version": "3.2.0",
   "description": "MCP server that wraps @playwright/mcp with pool management — golden profile auth, UUID isolation, window/tab modes",
   "type": "module",
   "bin": {
-    "playwright-pool": "server.js"
+    "playwright-pool": "cli.js",
+    "playwright-pool-server": "server.js"
   },
   "scripts": {
     "start": "node server.js"
