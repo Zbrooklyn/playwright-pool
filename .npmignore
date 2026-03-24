@@ -1,0 +1,14 @@
+# Test fixtures and benchmarks — not needed by users
+tests/
+scripts/
+docs/
+benchmark-results-*.json
+baseline.json
+autoresearch-log.jsonl
+playwright-audit/
+*.output
+
+# Development files
+CLAUDE.md
+ROADMAP.md
+.gitignore
