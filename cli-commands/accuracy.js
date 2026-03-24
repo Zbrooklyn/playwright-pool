@@ -39,15 +39,22 @@ const IMPLEMENTED_AUDITS = [
   'mixed_content',
   'third_party_scripts',
   'cookie_compliance',
+  'spacing_consistency',
+  'scroll',
+  'print',
+  'interaction',
 ];
 
 // Category-to-audit mapping so we know which audits to run for each bug category
 const CATEGORY_AUDITS = {
-  accessibility: ['accessibility', 'color_contrast', 'focus_order', 'tap_targets'],
+  accessibility: ['accessibility', 'color_contrast', 'focus_order', 'tap_targets', 'interaction'],
   seo: ['meta', 'broken_links'],
-  visual: ['breakpoints', 'overflow', 'dark_mode', 'image_sizes'],
+  visual: ['breakpoints', 'overflow', 'dark_mode', 'image_sizes', 'spacing_consistency', 'scroll'],
+  spacing: ['spacing_consistency'],
   performance: ['core_web_vitals', 'image_sizes', 'fonts'],
+  typography: ['fonts'],
   security: ['security_headers', 'mixed_content', 'third_party_scripts', 'cookie_compliance'],
+  print: ['print'],
   forms: [],
 };
 
@@ -268,6 +275,91 @@ async function runAllAudits(page, context) {
     console.error(`  Error in focus order audit: ${err.message}`);
   }
 
+  // 8. Font consistency audit
+  try {
+    const fontResults = await runFontAudit(page);
+    for (const f of fontResults) {
+      findings.push({
+        audit: 'fonts',
+        category: f.category || 'typography',
+        id: f.id || 'font-consistency',
+        description: f.description,
+        selector: f.selector || '',
+        severity: f.severity || 'moderate',
+      });
+    }
+  } catch (err) {
+    console.error(`  Error in font consistency audit: ${err.message}`);
+  }
+
+  // 9. Spacing consistency audit
+  try {
+    const spacingResults = await runSpacingAudit(page);
+    for (const s of spacingResults) {
+      findings.push({
+        audit: 'spacing_consistency',
+        category: s.category || 'spacing',
+        id: s.id || 'spacing-inconsistency',
+        description: s.description,
+        selector: s.selector || '',
+        severity: s.severity || 'moderate',
+      });
+    }
+  } catch (err) {
+    console.error(`  Error in spacing consistency audit: ${err.message}`);
+  }
+
+  // 10. Scroll audit (fixed/sticky overlap, scrollbar layout shift)
+  try {
+    const scrollResults = await runScrollAudit(page);
+    for (const s of scrollResults) {
+      findings.push({
+        audit: 'scroll',
+        category: s.category || 'visual',
+        id: s.id || 'scroll-issue',
+        description: s.description,
+        selector: s.selector || '',
+        severity: s.severity || 'serious',
+      });
+    }
+  } catch (err) {
+    console.error(`  Error in scroll audit: ${err.message}`);
+  }
+
+  // 11. Print audit (print stylesheet hides content)
+  try {
+    const printResults = await runPrintAudit(page);
+    for (const p of printResults) {
+      findings.push({
+        audit: 'print',
+        category: p.category || 'print',
+        id: p.id || 'print-issue',
+        description: p.description,
+        selector: p.selector || '',
+        severity: p.severity || 'serious',
+      });
+    }
+  } catch (err) {
+    console.error(`  Error in print audit: ${err.message}`);
+  }
+
+  // 12. Interaction audit (auto-playing animations, user-select: none)
+  try {
+    const interactionResults = await runInteractionAudit(page);
+    for (const i of interactionResults) {
+      findings.push({
+        audit: 'interaction',
+        category: i.category || 'accessibility',
+        id: i.id || 'interaction-issue',
+        description: i.description,
+        selector: i.selector || '',
+        severity: i.severity || 'serious',
+      });
+    }
+  } catch (err) {
+    console.error(`  Error in interaction audit: ${err.message}`);
+  }
+
   return findings;
 }
 
@@ -326,17 +418,21 @@ async function runAccessibilityAudit(page) {
       }
     });
 
-    // Empty buttons
+    // Empty buttons (no text content, no aria-label, no child img with alt)
     document.querySelectorAll('button, [role="button"]').forEach(btn => {
       if (!isVisible(btn)) return;
       const text = (btn.textContent || '').trim();
       const ariaLabel = btn.getAttribute('aria-label') || '';
       const img = btn.querySelector('img[alt]');
       if (!text && !ariaLabel && !img) {
+        const tag = btn.tagName.toLowerCase();
+        const classes = (typeof btn.className === 'string' && btn.className.trim())
+          ? '.' + btn.className.trim().split(/\s+/).join('.')
+          : '';
         violations.push({
           id: 'button-name', impact: 'critical',
           description: 'Buttons must have discernible text',
-          target: btn.className ? `button.${btn.className.split(' ')[0]}` : 'button',
+          target: tag + classes,
         });
       }
     });
