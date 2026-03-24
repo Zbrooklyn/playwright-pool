@@ -1939,8 +1939,29 @@ async function handleSnapshotCompact(params) {
 async function handlePoolLaunch(params) {
   const mode = params.mode || 'window';
   const id = `${SESSION_ID}-${nextId++}`;
-  const vw = params.width || 1280;
-  const vh = params.height || 800;
+
+  // Resolve device emulation preset
+  let deviceOptions = {};
+  if (params.device) {
+    if (mode === 'tab') {
+      return {
+        content: [{ type: 'text', text: 'Device emulation is only supported in "window" mode (each window gets its own context). Use mode "window" with a device preset.' }],
+        isError: true,
+      };
+    }
+    const preset = devices[params.device];
+    if (!preset) {
+      const available = Object.keys(devices).filter(d => !d.includes('landscape')).slice(0, 20);
+      return {
+        content: [{ type: 'text', text: `Unknown device "${params.device}". Examples: ${available.join(', ')}` }],
+        isError: true,
+      };
+    }
+    deviceOptions = { ...preset };
+  }
+
+  const vw = params.width || deviceOptions.viewport?.width || 1280;
+  const vh = params.height || deviceOptions.viewport?.height || 800;
 
   ensurePoolDir();
   await ensureTemplate();
@@ -2000,14 +2021,24 @@ async function handlePoolLaunch(params) {
     contextDir = path.join(POOL_DIR, id);
     createAuthProfile(contextDir);
     const cdpPort = await findFreePort();
-    browserContext = await chromium.launchPersistentContext(contextDir, {
+
+    // Build context options, merging device preset if provided
+    const contextLaunchOptions = {
       headless: false,
       viewport: { width: vw, height: vh },
       args: [
         '--disable-blink-features=AutomationControlled',
         `--remote-debugging-port=${cdpPort}`,
       ],
-    });
+    };
+    // Apply device emulation options (userAgent, deviceScaleFactor, isMobile, hasTouch, screen)
+    if (deviceOptions.userAgent) contextLaunchOptions.userAgent = deviceOptions.userAgent;
+    if (deviceOptions.deviceScaleFactor) contextLaunchOptions.deviceScaleFactor = deviceOptions.deviceScaleFactor;
+    if (deviceOptions.isMobile !== undefined) contextLaunchOptions.isMobile = deviceOptions.isMobile;
+    if (deviceOptions.hasTouch !== undefined) contextLaunchOptions.hasTouch = deviceOptions.hasTouch;
+    if (deviceOptions.screen) contextLaunchOptions.screen = deviceOptions.screen;
+
+    browserContext = await chromium.launchPersistentContext(contextDir, contextLaunchOptions);
 
     backend = await createBackendForContext(browserContext);
 
@@ -2023,11 +2054,12 @@ async function handlePoolLaunch(params) {
   // Make this the active context
   activeId = id;
 
-  log(`${mode === 'tab' ? 'Tab' : 'Window'} "${id}" created (${vw}x${vh})`);
+  const deviceSuffix = params.device ? ` [device: ${params.device}]` : '';
+  log(`${mode === 'tab' ? 'Tab' : 'Window'} "${id}" created (${vw}x${vh}${deviceSuffix})`);
   return {
     content: [{
       type: 'text',
-      text: `Created ${mode} "${id}"${params.label ? ` [${params.label}]` : ''} (${vw}x${vh})\nThis is now the active context. All browser_* tools will operate on it.`,
+      text: `Created ${mode} "${id}"${params.label ? ` [${params.label}]` : ''}${deviceSuffix} (${vw}x${vh})\nThis is now the active context. All browser_* tools will operate on it.`,
     }],
   };
 }
@@ -2234,10 +2266,13 @@ class PoolCompositeBackend {
     // Utility tools (snapshot_compact, etc.)
     const utilityTools = utilityToolSchemas.map(schema => toMcpTool(schema));
 
+    // Custom browser tools (storage, cookies, mouse wheel — not in upstream @playwright/mcp)
+    const customTools = customToolSchemas.map(schema => toMcpTool(schema));
+
     // Official browser tools (full list)
     const browserTools = this._browserToolList || [];
 
-    return [...poolTools, ...auditToolsA, ...auditToolsB, ...utilityTools, ...browserTools];
+    return [...poolTools, ...auditToolsA, ...auditToolsB, ...utilityTools, ...customTools, ...browserTools];
   }
 
   async callTool(name, rawArguments, progress) {
@@ -2329,6 +2364,25 @@ class PoolCompositeBackend {
       const parsed = schema.inputSchema.parse(rawArguments || {});
       try {
         return await handleSnapshotCompact(parsed);
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Error in ${name}: ${error.message}` }], isError: true };
+      }
+    }
+
+    // Custom browser tools (storage, cookies, mouse wheel)
+    const customSchema = customToolSchemas.find(s => s.name === name);
+    if (customSchema) {
+      const parsed = customSchema.inputSchema.parse(rawArguments || {});
+      try {
+        switch (name) {
+          case 'browser_cookies_get': return await handleCookiesGet(parsed);
+          case 'browser_cookies_set': return await handleCookiesSet(parsed);
+          case 'browser_cookies_clear': return await handleCookiesClear(parsed);
+          case 'browser_storage_get': return await handleStorageGet(parsed);
+          case 'browser_storage_set': return await handleStorageSet(parsed);
+          case 'browser_mouse_wheel': return await handleMouseWheel(parsed);
+          default: break;
+        }
       } catch (error) {
         return { content: [{ type: 'text', text: `Error in ${name}: ${error.message}` }], isError: true };
       }
