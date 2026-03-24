@@ -842,6 +842,179 @@ async function runFocusOrderAudit(page) {
   });
 }
 
+async function runFontAudit(page) {
+  return page.evaluate(() => {
+    const issues = [];
+
+    // ── Helpers ──
+
+    function isVisible(el) {
+      const style = window.getComputedStyle(el);
+      return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0'
+        && el.offsetWidth > 0 && el.offsetHeight > 0;
+    }
+
+    function hasDirectText(el) {
+      return Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim());
+    }
+
+    // Extract the primary (first) font from a computed font-family stack.
+    // e.g. '"Helvetica Neue", Arial, sans-serif' -> 'helvetica neue'
+    function primaryFont(fontFamily) {
+      if (!fontFamily) return '';
+      const first = fontFamily.split(',')[0].trim();
+      return first.replace(/["']/g, '').toLowerCase();
+    }
+
+    // Known groups of similar-but-different fonts that indicate copy-paste
+    // inconsistency or accidental mixing.
+    const SIMILAR_FONT_GROUPS = [
+      ['arial', 'helvetica', 'helvetica neue'],
+      ['times new roman', 'times', 'georgia', 'palatino'],
+      ['courier new', 'courier', 'lucida console'],
+      ['verdana', 'tahoma', 'trebuchet ms'],
+      ['segoe ui', 'roboto', 'open sans', 'noto sans'],
+      ['calibri', 'carlito'],
+    ];
+
+    function findFontGroup(fontName) {
+      const lower = fontName.toLowerCase();
+      for (const group of SIMILAR_FONT_GROUPS) {
+        if (group.includes(lower)) return group;
+      }
+      return null;
+    }
+
+    // ── 1. Collect computed font-family and font-size for every visible text element ──
+
+    const TEXT_SELECTOR = 'p, span, a, h1, h2, h3, h4, h5, h6, li, td, th, label, button, div, strong, em, b, i, small, blockquote, figcaption, dt, dd';
+    const elements = document.querySelectorAll(TEXT_SELECTOR);
+
+    // Map: primaryFont -> { count, selectors[], fullStack }
+    const fontUsage = {};
+    // Map: tag -> { fontSize -> selectors[] }
+    const sizesByTag = {};
+
+    elements.forEach(el => {
+      if (!isVisible(el)) return;
+      if (!hasDirectText(el)) return;
+
+      const style = window.getComputedStyle(el);
+      const fullStack = style.fontFamily;
+      const primary = primaryFont(fullStack);
+      const fontSize = style.fontSize;
+      const tag = el.tagName.toLowerCase();
+      const selector = tag +
+        (el.className ? '.' + String(el.className).split(' ')[0] : '') +
+        (el.id ? '#' + el.id : '');
+
+      if (primary) {
+        if (!fontUsage[primary]) {
+          fontUsage[primary] = { count: 0, selectors: [], fullStack };
+        }
+        fontUsage[primary].count++;
+        if (fontUsage[primary].selectors.length < 3) {
+          fontUsage[primary].selectors.push(selector);
+        }
+      }
+
+      // Track sizes by heading/semantic tag for consistency checks
+      const semanticTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'td', 'th', 'button', 'a'];
+      if (semanticTags.includes(tag)) {
+        if (!sizesByTag[tag]) sizesByTag[tag] = {};
+        if (!sizesByTag[tag][fontSize]) sizesByTag[tag][fontSize] = [];
+        if (sizesByTag[tag][fontSize].length < 3) {
+          sizesByTag[tag][fontSize].push(selector);
+        }
+      }
+    });
+
+    // ── 2. Detect similar-but-different fonts (e.g. Arial vs Helvetica) ──
+
+    const primaryFonts = Object.keys(fontUsage);
+    const flaggedPairs = new Set();
+
+    for (let i = 0; i < primaryFonts.length; i++) {
+      const fontA = primaryFonts[i];
+      const groupA = findFontGroup(fontA);
+      if (!groupA) continue;
+
+      for (let j = i + 1; j < primaryFonts.length; j++) {
+        const fontB = primaryFonts[j];
+        if (fontA === fontB) continue;
+        const groupB = findFontGroup(fontB);
+        if (!groupB) continue;
+
+        // Same similarity group -> flag inconsistency
+        if (groupA === groupB) {
+          const pairKey = [fontA, fontB].sort().join('|');
+          if (flaggedPairs.has(pairKey)) continue;
+          flaggedPairs.add(pairKey);
+
+          const examplesA = fontUsage[fontA].selectors.slice(0, 2).join(', ');
+          const examplesB = fontUsage[fontB].selectors.slice(0, 2).join(', ');
+
+          issues.push({
+            category: 'typography',
+            id: 'font-similar-mismatch',
+            description: `Similar but different fonts used: "${fontA}" (${fontUsage[fontA].count} elements, e.g. ${examplesA}) vs "${fontB}" (${fontUsage[fontB].count} elements, e.g. ${examplesB})`,
+            selector: fontUsage[fontA].selectors[0] || '',
+            severity: 'serious',
+          });
+        }
+      }
+    }
+
+    // ── 3. Detect mixed font families (more than 3 distinct primary fonts is suspicious) ──
+
+    const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'emoji', 'math', 'fangsong']);
+    const nonGenericFonts = primaryFonts.filter(f => !GENERIC.has(f));
+
+    if (nonGenericFonts.length > 3) {
+      const fontList = nonGenericFonts.map(f => `"${f}" (${fontUsage[f].count})`).join(', ');
+      issues.push({
+        category: 'typography',
+        id: 'font-too-many-families',
+        description: `Too many distinct font families (${nonGenericFonts.length}): ${fontList}. Aim for 2-3 max for visual consistency.`,
+        selector: 'body',
+        severity: 'moderate',
+      });
+    }
+
+    // ── 4. Detect inconsistent font sizes within same element type ──
+
+    const headingTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+    for (const tag of Object.keys(sizesByTag)) {
+      const sizes = Object.keys(sizesByTag[tag]);
+      if (sizes.length <= 1) continue;
+
+      // Only flag if there are enough elements to make it meaningful
+      const totalElements = sizes.reduce((sum, s) => sum + sizesByTag[tag][s].length, 0);
+      if (totalElements < 2) continue;
+
+      // For headings, any size variation is a problem
+      // For body text, minor variations may be intentional
+      const isHeading = headingTags.includes(tag);
+      if (!isHeading && sizes.length <= 2) continue;
+
+      const sizeDetail = sizes.map(s => {
+        const examples = sizesByTag[tag][s].slice(0, 2).join(', ');
+        return `${s} (e.g. ${examples})`;
+      }).join(', ');
+
+      issues.push({
+        category: 'typography',
+        id: 'font-size-inconsistent',
+        description: `Inconsistent font sizes for <${tag}>: ${sizeDetail}`,
+        selector: tag,
+        severity: isHeading ? 'serious' : 'moderate',
+      });
+    }
+
+    return issues;
+  });
+}
+
 async function runSpacingAudit(page) {
   return page.evaluate(() => {
     const issues = [];
