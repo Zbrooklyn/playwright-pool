@@ -1,96 +1,331 @@
 {
   "test-page-easy.html": {
-    "description": "10 planted bugs — basic accessibility, SEO, and layout issues",
+    "total_bugs": 10,
     "bugs": [
       {
         "id": "easy-1",
         "category": "accessibility",
-        "subcategory": "image-alt",
         "severity": "critical",
         "description": "Image missing alt attribute",
-        "selector": "img.no-alt",
-        "matchHints": ["image-alt", "alt", "img"]
+        "selector": "img.no-alt"
       },
       {
         "id": "easy-2",
         "category": "accessibility",
-        "subcategory": "button-name",
         "severity": "critical",
         "description": "Empty button with no text or aria-label",
-        "selector": "button.empty-button",
-        "matchHints": ["button-name", "empty button", "btn-icon"]
+        "selector": "button.empty-button"
       },
       {
         "id": "easy-3",
         "category": "accessibility",
-        "subcategory": "color-contrast",
         "severity": "serious",
-        "description": "Insufficient color contrast on subtitle text (#999 on #fff)",
-        "selector": ".hero .subtitle",
-        "matchHints": ["color-contrast", "contrast", "#999", "subtitle"]
+        "description": "Insufficient color contrast — #999 text on #fff background",
+        "selector": ".hero .subtitle"
       },
       {
         "id": "easy-4",
         "category": "accessibility",
-        "subcategory": "label",
-        "severity": "critical",
-        "description": "Form input without associated label",
-        "selector": "input.no-label-input",
-        "matchHints": ["label", "form", "input", "no-label"]
+        "severity": "serious",
+        "description": "Form input with no associated label element",
+        "selector": "input.no-label-input"
       },
       {
         "id": "easy-5",
         "category": "seo",
-        "subcategory": "title-missing",
-        "severity": "critical",
-        "description": "Missing page title element",
-        "selector": "head",
-        "matchHints": ["title-missing", "document-title", "title", "<title>"]
+        "severity": "serious",
+        "description": "Missing <title> element in document head",
+        "selector": "head"
       },
       {
         "id": "easy-6",
-        "category": "seo",
-        "subcategory": "viewport-missing",
-        "severity": "critical",
-        "description": "Missing meta viewport tag",
-        "selector": "head",
-        "matchHints": ["viewport-missing", "viewport", "meta viewport"]
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Missing meta viewport tag for responsive design",
+        "selector": "head"
       },
       {
         "id": "easy-7",
-        "category": "accessibility",
-        "subcategory": "link-name",
-        "severity": "serious",
-        "description": "Link with empty href attribute",
-        "selector": "a.empty-href-link",
-        "matchHints": ["link-name", "empty", "href"]
+        "category": "seo",
+        "severity": "moderate",
+        "description": "Anchor link with empty href attribute",
+        "selector": "a.empty-href-link"
       },
       {
         "id": "easy-8",
         "category": "accessibility",
-        "subcategory": "heading-order",
         "severity": "moderate",
-        "description": "Heading hierarchy skip — h3 after h1 with no h2",
-        "selector": ".hero h3",
-        "matchHints": ["heading-order", "heading", "h3", "h1", "skip"]
+        "description": "Heading hierarchy skip — h1 to h3 with no h2",
+        "selector": ".hero h3"
       },
       {
         "id": "easy-9",
         "category": "visual",
-        "subcategory": "overflow",
         "severity": "serious",
-        "description": "Horizontal overflow — 2000px element inside constrained container",
-        "selector": ".overflow-inner",
-        "matchHints": ["overflow", "horizontal", "2000px", "scroll"]
+        "description": "Horizontal overflow — 2000px element inside 375px container",
+        "selector": ".overflow-inner"
       },
       {
         "id": "easy-10",
         "category": "accessibility",
-        "subcategory": "tap-target",
         "severity": "serious",
-        "description": "Touch target too small (20x20px button)",
-        "selector": "button.small-touch-target",
-        "matchHints": ["tap-target", "touch", "small", "20px", "btn-small"]
+        "description": "Touch target too small — 20x20px button (minimum is 44x44px)",
+        "selector": "button.small-touch-target"
+      }
+    ]
+  },
+  "test-page-medium.html": {
+    "total_bugs": 15,
+    "bugs": [
+      {
+        "id": "medium-1",
+        "category": "accessibility",
+        "severity": "critical",
+        "description": "Image missing alt attribute",
+        "selector": "img.no-alt"
+      },
+      {
+        "id": "medium-2",
+        "category": "accessibility",
+        "severity": "critical",
+        "description": "Empty button with no text or aria-label",
+        "selector": "button.empty-button"
+      },
+      {
+        "id": "medium-3",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Insufficient color contrast — #aaa text on #fff background",
+        "selector": ".low-contrast-text"
+      },
+      {
+        "id": "medium-4",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Form inputs with no associated label elements",
+        "selector": "input.no-label-input"
+      },
+      {
+        "id": "medium-5",
+        "category": "seo",
+        "severity": "serious",
+        "description": "Missing <title> element in document head",
+        "selector": "head"
+      },
+      {
+        "id": "medium-6",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Missing meta viewport tag for responsive design",
+        "selector": "head"
+      },
+      {
+        "id": "medium-7",
+        "category": "seo",
+        "severity": "moderate",
+        "description": "Anchor link with empty href attribute",
+        "selector": "a.empty-href-link"
+      },
+      {
+        "id": "medium-8",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Heading hierarchy skip — h1 to h3 with no h2",
+        "selector": "h3.section-title"
+      },
+      {
+        "id": "medium-9",
+        "category": "visual",
+        "severity": "serious",
+        "description": "Horizontal overflow — 2000px element inside constrained container",
+        "selector": ".overflow-inner"
+      },
+      {
+        "id": "medium-10",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Touch target too small — 20x20px button (minimum is 44x44px)",
+        "selector": "button.small-touch-target"
+      },
+      {
+        "id": "medium-11",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Text overflows container at mobile widths — unbreakable long string without word-wrap",
+        "selector": ".text-overflow-bug"
+      },
+      {
+        "id": "medium-12",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Z-index conflict — two positioned elements with same z-index overlapping",
+        "selector": ".z-index-overlap-a"
+      },
+      {
+        "id": "medium-13",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Inconsistent spacing — 13px padding instead of 16px used elsewhere",
+        "selector": ".inconsistent-spacing"
+      },
+      {
+        "id": "medium-14",
+        "category": "seo",
+        "severity": "moderate",
+        "description": "Missing Open Graph meta tags (og:title, og:description, og:image)",
+        "selector": "head"
+      },
+      {
+        "id": "medium-15",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Font inconsistency — Arial on stat values vs Helvetica on stat labels",
+        "selector": ".font-inconsistent-value"
+      }
+    ]
+  },
+  "test-page-hard.html": {
+    "total_bugs": 20,
+    "bugs": [
+      {
+        "id": "hard-1",
+        "category": "accessibility",
+        "severity": "critical",
+        "description": "Image missing alt attribute in table row",
+        "selector": "img.no-alt"
+      },
+      {
+        "id": "hard-2",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Stat card widths subtly unequal — 380px vs 412px vs 395px",
+        "selector": ".stat-card.unequal-width-1"
+      },
+      {
+        "id": "hard-3",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Table action buttons stacked vertically instead of horizontal row",
+        "selector": ".action-buttons"
+      },
+      {
+        "id": "hard-4",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Email text truncated with ellipsis in sidebar when it should be visible",
+        "selector": ".email-truncated"
+      },
+      {
+        "id": "hard-5",
+        "category": "seo",
+        "severity": "serious",
+        "description": "Missing <title> element in document head",
+        "selector": "head"
+      },
+      {
+        "id": "hard-6",
+        "category": "visual",
+        "severity": "minor",
+        "description": "CSS Grid gap of 13px instead of 16px (spacing inconsistency)",
+        "selector": ".content-grid"
+      },
+      {
+        "id": "hard-7",
+        "category": "visual",
+        "severity": "serious",
+        "description": "Delete button has same color as Edit button — should be red for destructive action",
+        "selector": ".action-btn-delete.same-color-delete"
+      },
+      {
+        "id": "hard-8",
+        "category": "seo",
+        "severity": "moderate",
+        "description": "Missing canonical URL link element",
+        "selector": "head"
+      },
+      {
+        "id": "hard-9",
+        "category": "performance",
+        "severity": "minor",
+        "description": "Font loading fallback visible — references nonexistent Google Font causing FOUT",
+        "selector": "body"
+      },
+      {
+        "id": "hard-10",
+        "category": "visual",
+        "severity": "serious",
+        "description": "Fixed-position banner covers page content when scrolled to bottom",
+        "selector": ".fixed-covering-content"
+      },
+      {
+        "id": "hard-11",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Table headers have no sort indicators despite being a data table",
+        "selector": "thead th"
+      },
+      {
+        "id": "hard-12",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Inconsistent date formats in same table — Mar 5 vs March 5th vs 2026-03-05",
+        "selector": ".inconsistent-date-1"
+      },
+      {
+        "id": "hard-13",
+        "category": "security",
+        "severity": "moderate",
+        "description": "No Content Security Policy meta tag",
+        "selector": "head"
+      },
+      {
+        "id": "hard-14",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Print stylesheet hides all content — nothing visible when printed",
+        "selector": "body"
+      },
+      {
+        "id": "hard-15",
+        "category": "performance",
+        "severity": "moderate",
+        "description": "Animation uses left property instead of transform causing layout thrashing",
+        "selector": ".jank-animation .marquee-text"
+      },
+      {
+        "id": "hard-16",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Nested interactive elements — button inside an anchor link",
+        "selector": ".nested-interactive-link .nested-interactive-btn"
+      },
+      {
+        "id": "hard-17",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Auto-playing CSS animation that cannot be paused (notification pulse)",
+        "selector": ".notification-dot.auto-animation"
+      },
+      {
+        "id": "hard-18",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Text selection disabled (user-select: none) on table content that should be selectable",
+        "selector": "tr.no-select-content"
+      },
+      {
+        "id": "hard-19",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Scrollbar appears/disappears in table causing layout shift",
+        "selector": ".scrollbar-layout-shift"
+      },
+      {
+        "id": "hard-20",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Tab order (tabindex) does not match visual order of quick action buttons",
+        "selector": ".quick-actions .qa-btn"
       }
     ]
   }

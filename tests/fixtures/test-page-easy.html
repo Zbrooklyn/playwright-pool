@@ -1,0 +1,240 @@
+<!-- TEST PAGE: 10 planted bugs. See answer-key.json -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- BUG easy-5: Missing <title> element -->
+  <!-- BUG easy-6: Missing meta viewport tag -->
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f8f9fa;
+      color: #212529;
+      line-height: 1.6;
+    }
+    header {
+      background: #1a73e8;
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; }
+    nav a {
+      color: #fff;
+      text-decoration: none;
+      margin-left: 20px;
+      font-size: 0.9rem;
+    }
+    nav a:hover { text-decoration: underline; }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+    .hero {
+      background: #fff;
+      border-radius: 8px;
+      padding: 48px 32px;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 32px;
+    }
+    .hero img {
+      width: 200px;
+      height: auto;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    /* BUG easy-8: Heading hierarchy skip — h1 in header, then h3 here (no h2) */
+    .hero h3 {
+      font-size: 1.75rem;
+      color: #212529;
+      margin-bottom: 12px;
+    }
+    /* BUG easy-3: Insufficient color contrast — #999 on #fff */
+    .hero .subtitle {
+      color: #999;
+      font-size: 1rem;
+      margin-bottom: 24px;
+    }
+    .cta-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      align-items: center;
+    }
+    .btn-primary {
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn-primary:hover { background: #1557b0; }
+    /* BUG easy-2: Empty button — no text or aria-label */
+    .btn-icon {
+      background: #e8f0fe;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+    .feature-card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .feature-card h4 {
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+      color: #212529;
+    }
+    .feature-card p {
+      color: #5f6368;
+      font-size: 0.9rem;
+    }
+    .signup-section {
+      background: #fff;
+      border-radius: 8px;
+      padding: 32px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 32px;
+    }
+    .signup-section h3 {
+      margin-bottom: 16px;
+      font-size: 1.25rem;
+    }
+    .form-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    .form-row input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+    /* BUG easy-10: Touch target too small — 20x20px button */
+    .btn-small {
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+      padding: 0;
+    }
+    /* BUG easy-9: Horizontal overflow — 2000px element inside a constrained container */
+    .overflow-section {
+      max-width: 375px;
+      margin: 0 auto 32px;
+      background: #fff;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .overflow-inner {
+      width: 2000px;
+      height: 40px;
+      background: linear-gradient(90deg, #e8f0fe, #c6dafc);
+      border-radius: 4px;
+    }
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: #5f6368;
+      font-size: 0.85rem;
+    }
+    footer a { color: #1a73e8; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Acme Dashboard</h1>
+    <nav>
+      <a href="/features">Features</a>
+      <a href="/pricing">Pricing</a>
+      <!-- BUG easy-7: Link with empty href -->
+      <a href="" class="empty-href-link">Support</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <section class="hero">
+      <!-- BUG easy-1: Image missing alt attribute -->
+      <img class="no-alt" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120' fill='%23e8f0fe'%3E%3Crect width='200' height='120' rx='8'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%231a73e8' font-size='14'%3EProduct Image%3C/text%3E%3C/svg%3E">
+
+      <!-- BUG easy-8: h3 after h1, skipping h2 -->
+      <h3>Build faster with Acme Tools</h3>
+
+      <!-- BUG easy-3: Low contrast text -->
+      <p class="subtitle">The all-in-one platform for modern teams to ship products faster.</p>
+
+      <div class="cta-row">
+        <a href="/signup" class="btn-primary">Get Started Free</a>
+        <!-- BUG easy-2: Empty button with no text or aria-label -->
+        <button class="btn-icon empty-button"></button>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="feature-card">
+        <h4>Real-time Analytics</h4>
+        <p>Track user behavior and conversion rates with live dashboards that update every second.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Team Collaboration</h4>
+        <p>Work together seamlessly with shared workspaces, comments, and version history.</p>
+      </div>
+      <div class="feature-card">
+        <h4>API Integrations</h4>
+        <p>Connect with 200+ tools your team already uses through our REST and GraphQL APIs.</p>
+      </div>
+    </section>
+
+    <section class="signup-section">
+      <h3>Stay Updated</h3>
+      <div class="form-row">
+        <!-- BUG easy-4: Input with no associated label -->
+        <input type="email" class="no-label-input" placeholder="Enter your email">
+        <button class="btn-primary">Subscribe</button>
+        <!-- BUG easy-10: Touch target too small -->
+        <button class="btn-small small-touch-target">?</button>
+      </div>
+    </section>
+
+    <!-- BUG easy-9: Overflow container -->
+    <section class="overflow-section">
+      <h4>Activity Timeline</h4>
+      <div class="overflow-inner"></div>
+    </section>
+  </div>
+
+  <footer>
+    <p>&copy; 2026 Acme Inc. All rights reserved. <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
+  </footer>
+</body>
+</html>

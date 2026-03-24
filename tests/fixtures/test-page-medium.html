@@ -1,0 +1,337 @@
+<!-- TEST PAGE: 15 planted bugs. See answer-key.json -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- BUG medium-5: Missing <title> element -->
+  <!-- BUG medium-6: Missing meta viewport tag -->
+  <meta charset="UTF-8">
+  <!-- BUG medium-14: Missing Open Graph meta tags -->
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f4f5f7;
+      color: #212529;
+      line-height: 1.6;
+      /* BUG medium-21 (hard-mode-ish): Hardcoded white background, no prefers-color-scheme */
+    }
+    header {
+      background: #0052cc;
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; }
+    nav { display: flex; gap: 16px; }
+    nav a {
+      color: #fff;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .container {
+      max-width: 1024px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+    /* BUG medium-8: Heading hierarchy skip — h1 in header, then h3 */
+    .section-title {
+      font-size: 1.5rem;
+      margin-bottom: 16px;
+      color: #212529;
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .card-img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+    }
+    .card-body { padding: 16px; }
+    .card-body h4 {
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+      color: #212529;
+    }
+    .card-body p {
+      font-size: 0.9rem;
+      color: #5f6368;
+      margin-bottom: 12px;
+    }
+    /* BUG medium-3: Insufficient color contrast — #aaa on #fff */
+    .card-meta {
+      color: #aaa;
+      font-size: 0.8rem;
+    }
+    .card-link {
+      color: #0052cc;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .card-link:hover { text-decoration: underline; }
+
+    /* BUG medium-12: Text overflow — long unbreakable text without word-wrap */
+    .announcement-bar {
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 32px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      max-width: 375px;
+    }
+    .announcement-text {
+      font-size: 0.9rem;
+      color: #212529;
+      /* Deliberately no overflow-wrap or word-break */
+    }
+
+    /* BUG medium-13: Z-index conflict — two overlapping elements */
+    .overlap-container {
+      position: relative;
+      height: 120px;
+      margin-bottom: 32px;
+    }
+    .overlap-a {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 200px;
+      height: 100px;
+      background: #e3f2fd;
+      border: 1px solid #90caf9;
+      border-radius: 8px;
+      z-index: 2;
+      padding: 12px;
+      font-size: 0.85rem;
+      color: #1565c0;
+    }
+    .overlap-b {
+      position: absolute;
+      top: 20px;
+      left: 80px;
+      width: 200px;
+      height: 100px;
+      background: #fce4ec;
+      border: 1px solid #ef9a9a;
+      border-radius: 8px;
+      z-index: 2;
+      padding: 12px;
+      font-size: 0.85rem;
+      color: #c62828;
+    }
+
+    /* BUG medium-15: Font inconsistency — mixing Arial and Helvetica */
+    .stats-section {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+    .stat-box {
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px;
+      flex: 1;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      text-align: center;
+    }
+    .stat-value {
+      font-family: Arial, sans-serif;
+      font-size: 2rem;
+      font-weight: 700;
+      color: #0052cc;
+    }
+    .stat-label {
+      font-family: Helvetica, sans-serif;
+      font-size: 0.85rem;
+      color: #5f6368;
+    }
+
+    /* BUG medium-14 spacing: Most elements use 16px padding but this uses 13px */
+    .cta-section {
+      background: #fff;
+      border-radius: 8px;
+      padding: 13px;
+      margin-bottom: 32px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .cta-section h3 {
+      font-size: 1.25rem;
+      margin-bottom: 12px;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .form-grid input, .form-grid select {
+      padding: 10px 14px;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+    /* BUG medium-16: No visible focus style */
+    .no-focus-style:focus {
+      outline: none;
+      box-shadow: none;
+    }
+    .btn-primary {
+      background: #0052cc;
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    .btn-primary:hover { background: #003d99; }
+
+    /* BUG medium-10: Touch target too small */
+    .btn-tiny {
+      background: #0052cc;
+      color: #fff;
+      border: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+      padding: 0;
+    }
+
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: #5f6368;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Taskflow</h1>
+    <nav>
+      <a href="/projects">Projects</a>
+      <a href="/boards">Boards</a>
+      <!-- BUG medium-7: Link with empty href -->
+      <a href="" class="empty-href-link">Help</a>
+      <!-- BUG medium-11: Link that returns 404 -->
+      <a href="/nonexistent-page" class="broken-link">Resources</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <!-- BUG medium-8: h3 after h1 (skipping h2) -->
+    <h3 class="section-title">Project Highlights</h3>
+
+    <section class="card-grid">
+      <div class="card">
+        <!-- BUG medium-1: Image missing alt attribute -->
+        <img class="card-img no-alt" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='180' fill='%23e8f0fe'%3E%3Crect width='400' height='180'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%230052cc' font-size='14'%3EProject Alpha%3C/text%3E%3C/svg%3E">
+        <div class="card-body">
+          <h4>Project Alpha</h4>
+          <p>A cutting-edge analytics platform for real-time data processing and visualization.</p>
+          <!-- BUG medium-3: Low contrast text -->
+          <span class="card-meta low-contrast-text">Updated 3 days ago</span>
+        </div>
+      </div>
+      <div class="card">
+        <img class="card-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='180' fill='%23f3e5f5'%3E%3Crect width='400' height='180'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%237b1fa2' font-size='14'%3EProject Beta%3C/text%3E%3C/svg%3E" alt="Project Beta thumbnail">
+        <div class="card-body">
+          <h4>Project Beta</h4>
+          <p>Mobile-first design system for our next-generation product suite.</p>
+          <span class="card-meta">Updated 1 week ago</span>
+        </div>
+      </div>
+      <div class="card">
+        <img class="card-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='180' fill='%23e8f5e9'%3E%3Crect width='400' height='180'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%232e7d32' font-size='14'%3EProject Gamma%3C/text%3E%3C/svg%3E" alt="Project Gamma thumbnail">
+        <div class="card-body">
+          <h4>Project Gamma</h4>
+          <p>Enterprise integration layer connecting CRM, ERP, and support tools.</p>
+          <span class="card-meta">Updated today</span>
+          <!-- BUG medium-11a: Mixed content — http:// image reference -->
+          <img class="mixed-content-img" src="http://example.com/badge.png" alt="Status badge" width="80" height="20" style="display:block;margin-top:8px;">
+        </div>
+      </div>
+    </section>
+
+    <!-- BUG medium-12: Unbreakable text overflow -->
+    <div class="announcement-bar">
+      <p class="announcement-text text-overflow-bug">Warning: Deployment_Pipeline_Configuration_Timeout_Error_20260315_Internal_Service_Communication_Failure_Check_Network_Settings_Immediately</p>
+    </div>
+
+    <!-- BUG medium-13: Z-index overlap -->
+    <div class="overlap-container">
+      <div class="overlap-a z-index-overlap-a">Panel A: Notifications</div>
+      <div class="overlap-b z-index-overlap-b">Panel B: Quick Actions</div>
+    </div>
+
+    <!-- BUG medium-15: Font inconsistency -->
+    <section class="stats-section">
+      <div class="stat-box">
+        <div class="stat-value font-inconsistent-value">1,247</div>
+        <div class="stat-label font-inconsistent-label">Active Users</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value font-inconsistent-value">89.3%</div>
+        <div class="stat-label font-inconsistent-label">Uptime</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value font-inconsistent-value">342</div>
+        <div class="stat-label font-inconsistent-label">Deployments</div>
+      </div>
+    </section>
+
+    <!-- BUG medium-14/spacing: 13px padding instead of 16px -->
+    <section class="cta-section inconsistent-spacing">
+      <h3>Join the Beta Program</h3>
+      <!-- BUG medium-17: Form with no validation — required fields without required attribute -->
+      <form class="no-validation-form">
+        <div class="form-grid">
+          <!-- BUG medium-4: Input with no associated label -->
+          <input type="text" class="no-label-input" placeholder="Full name">
+          <input type="email" class="no-label-input" placeholder="Email address">
+          <select class="no-label-input">
+            <option value="">Select role</option>
+            <option value="dev">Developer</option>
+            <option value="pm">Product Manager</option>
+            <option value="design">Designer</option>
+          </select>
+          <!-- BUG medium-16: No visible focus style -->
+          <input type="text" class="no-focus-style" placeholder="Company name">
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <button type="submit" class="btn-primary">Apply Now</button>
+          <!-- BUG medium-2: Empty button -->
+          <button class="btn-primary empty-button" style="padding:8px 12px;"></button>
+          <!-- BUG medium-10: Small touch target -->
+          <button type="button" class="btn-tiny small-touch-target">i</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- BUG medium-9: Overflow container (375px constrained) -->
+    <div style="max-width:375px;background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:32px;">
+      <h4>System Log</h4>
+      <div class="overflow-inner" style="width:2000px;height:30px;background:linear-gradient(90deg,#e3f2fd,#bbdefb);border-radius:4px;"></div>
+    </div>
+  </div>
+
+  <footer>
+    <p>&copy; 2026 Taskflow Inc. <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
+  </footer>
+</body>
+</html>
