@@ -1,7 +1,7 @@
 {
   "name": "@anthropic-tools/playwright-pool",
   "version": "4.0.0",
-  "description": "MCP server + CLI for dynamic Playwright browser pool management — golden profile auth, 42 CLI commands, 66 MCP tools, 27 UI audit tools",
+  "description": "MCP server and CLI for dynamic Playwright browser pool management with golden profile authentication, 59 MCP tools, 42 CLI commands, and 27 built-in UI audit tools for accessibility, performance, and visual regression testing",
   "type": "module",
   "bin": {
     "playwright-pool": "cli.js",
@@ -12,14 +12,31 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "playwright",
     "browser-pool",
-    "automation",
-    "claude",
-    "model-context-protocol",
     "browser-automation",
-    "golden-profile"
+    "golden-profile",
+    "ui-audit",
+    "accessibility-testing",
+    "wcag",
+    "axe-core",
+    "visual-regression",
+    "core-web-vitals",
+    "responsive-testing",
+    "dark-mode-testing",
+    "seo-audit",
+    "claude-code",
+    "claude",
+    "ai-browser",
+    "ai-tools",
+    "cursor",
+    "windsurf",
+    "automation",
+    "testing"
   ],
+  "homepage": "https://github.com/Zbrooklyn/playwright-pool",
   "author": "Edward Shamosh (https://github.com/Zbrooklyn)",
   "license": "MIT",
   "repository": {
@@ -31,5 +48,10 @@
   },
   "dependencies": {
     "playwright": "^1.58.0"
+  },
+  "devDependencies": {
+    "@axe-core/cli": "^4.11.1",
+    "lighthouse": "^13.0.3",
+    "pa11y": "^9.1.1"
   }
 }
