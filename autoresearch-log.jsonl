@@ -1,0 +1,2 @@
+{"ts":"2026-03-24T07:05:00Z","hypothesis":"Reduce post-navigation waitForTimeout from 1000ms to 200ms in CLI audit","file":"cli-commands/audit.js","metric":"meta_audit c=1 median","before_ms":2900,"after_ms":1800,"delta_pct":-37.9,"p_value":"N/A","verdict":"KEPT","commit":"9beb178"}
+{"ts":"2026-03-24T07:15:00Z","hypothesis":"Reduce breakpoint viewport wait from 300ms to 50ms","file":"cli-commands/audit.js","metric":"meta_audit c=3 median","before_ms":5800,"after_ms":5100,"delta_pct":-12.1,"p_value":"N/A","verdict":"KEPT","commit":"d248a8f"}
