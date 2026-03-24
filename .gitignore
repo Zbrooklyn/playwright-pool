@@ -2,3 +2,6 @@ node_modules/
 package-lock.json
 pool-contexts/
 *.log
+benchmark-results-*.json
+baseline.json
+playwright-audit/
