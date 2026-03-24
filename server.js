@@ -336,6 +336,16 @@ const auditToolSchemas = [
     inputSchema: mcpBundle.z.object({}),
     type: 'readOnly',
   },
+  {
+    name: 'audit_visual',
+    title: 'Comprehensive visual audit',
+    description:
+      'Run a comprehensive programmatic UI audit in a single pass: layout overflow, element overlaps, spacing consistency, color contrast, typography, tap targets, images, accessibility, SEO meta, focus order, z-index stacking, and dark mode. Returns a structured text report organized by category with severity-rated issues.',
+    inputSchema: mcpBundle.z.object({
+      url: mcpBundle.z.string().optional().describe('URL to navigate to before auditing (uses current page if omitted)'),
+    }),
+    type: 'readOnly',
+  },
 ];
 
 // --- Audit tool helper: get active page ---
@@ -1492,6 +1502,22 @@ async function handleAuditMeta(_params) {
   return { content: [{ type: 'text', text: lines.join('\n') }] };
 }
 
+// --- audit_visual handler (comprehensive visual audit) ---
+async function handleAuditVisual(params) {
+  const page = getActivePage();
+
+  if (params.url) {
+    await page.goto(params.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(200);
+  }
+
+  // Import and run the visual audit from the CLI module
+  const { runVisualAudit } = await import('./cli-commands/audit.js');
+  const result = await runVisualAudit(page, null, {});
+
+  return { content: [{ type: 'text', text: result.text }] };
+}
+
 // --- Pool tool handlers ---
 
 async function handlePoolLaunch(params) {
@@ -1858,6 +1884,7 @@ class PoolCompositeBackend {
           case 'audit_overflow': return await handleAuditOverflow(parsed);
           case 'audit_dark_mode': return await handleAuditDarkMode(parsed);
           case 'audit_meta': return await handleAuditMeta(parsed);
+          case 'audit_visual': return await handleAuditVisual(parsed);
           default: break;
         }
       } catch (error) {

@@ -91,9 +91,12 @@ export async function handleAudit(args) {
     process.exit(1);
   }
 
+  // Special: --only visual runs the comprehensive visual audit
+  const isVisualAudit = flags.only && flags.only.trim() === 'visual';
+
   // Determine which audits to run
   let audits = [...ALL_AUDITS];
-  if (flags.only) {
+  if (flags.only && !isVisualAudit) {
     audits = flags.only.split(',').map(s => s.trim());
   }
   if (flags.category) {
@@ -113,11 +116,13 @@ export async function handleAudit(args) {
     audits = audits.filter(a => !skip.has(a));
   }
 
-  // Validate audit names
-  for (const a of audits) {
-    if (!ALL_AUDITS.includes(a)) {
-      console.error(`Unknown audit: "${a}". Run \`playwright-pool audit list\` for available audits.`);
-      process.exit(1);
+  // Validate audit names (skip validation for the special 'visual' audit)
+  if (!isVisualAudit) {
+    for (const a of audits) {
+      if (!ALL_AUDITS.includes(a)) {
+        console.error(`Unknown audit: "${a}". Run \`playwright-pool audit list\` for available audits.`);
+        process.exit(1);
+      }
     }
   }
 
@@ -147,6 +152,26 @@ export async function handleAudit(args) {
         console.error(`  Failed to navigate to ${url}: ${err.message}`);
         allResults[url] = { error: err.message };
         exitCode = 1;
+        continue;
+      }
+
+      // Special: comprehensive visual audit
+      if (isVisualAudit) {
+        console.error(`  Running: comprehensive visual audit...`);
+        try {
+          const result = await runVisualAudit(page, context, { flags });
+          allResults[url] = { visual: result };
+          const issueCount = (result.issues || []).length;
+          totalIssueCount += issueCount;
+          if (issueCount > 0) exitCode = 2;
+          // Print the report directly
+          if (!jsonMode) {
+            console.log(result.text);
+          }
+        } catch (err) {
+          allResults[url] = { visual: { issues: [], text: `Error: ${err.message}` } };
+          console.error(`    Error in visual audit: ${err.message}`);
+        }
         continue;
       }
 
@@ -185,7 +210,24 @@ export async function handleAudit(args) {
 
   // ── Output ──
 
-  if (jsonMode) {
+  if (isVisualAudit) {
+    // Visual audit already printed its report above; handle JSON mode here
+    if (jsonMode) {
+      const output = {};
+      for (const [url, urlResults] of Object.entries(allResults)) {
+        if (urlResults.error) { output[url] = { error: urlResults.error }; continue; }
+        const vr = urlResults.visual || {};
+        output[url] = {
+          visual: {
+            issues: vr.issues || [],
+            issueCount: (vr.issues || []).length,
+            sections: vr.sections || {},
+          },
+        };
+      }
+      console.log(JSON.stringify(output, null, 2));
+    }
+  } else if (jsonMode) {
     // JSON output to stdout
     const output = {};
     for (const [url, urlResults] of Object.entries(allResults)) {
@@ -276,6 +318,11 @@ function printAuditList(filterCategory) {
   }
   console.log('Legend: [+] implemented  [-] stub');
   console.log(`\nTotal: ${ALL_AUDITS.length} audits across ${Object.keys(AUDIT_CATEGORIES).length} categories`);
+  console.log('');
+  console.log('  SPECIAL');
+  console.log('    [+] visual  (comprehensive: runs layout, spacing, contrast, typography,');
+  console.log('                 tap targets, images, a11y, SEO, focus, z-index, dark mode)');
+  console.log('        Usage: playwright-pool audit <url> --only visual');
 }
 
 async function runDiff(fileA, fileB, flags) {
@@ -2035,4 +2082,704 @@ async function auditLighthouse(page, context, opts) {
   lines.push('', 'Note: This is a lightweight approximation, not a full Lighthouse audit.');
 
   return { issues, text: lines.join('\n') };
+}
+
+// ─── 18. Comprehensive Visual Audit ─────────────────────────────────
+// Runs ALL programmatic UI checks in one pass: layout, spacing, contrast,
+// typography, touch targets, images, accessibility, SEO, focus order,
+// z-index, and dark mode comparison.  Produces a single structured report.
+
+export async function runVisualAudit(page, _context, opts = {}) {
+  const url = await page.url();
+  const originalViewport = page.viewportSize() || { width: 1280, height: 800 };
+  const ts = new Date().toISOString();
+
+  // ── Phase 1: ONE big page.evaluate() to collect all DOM metrics ──
+  const dom = await page.evaluate(() => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const bodyScrollW = document.documentElement.scrollWidth;
+    const bodyScrollH = document.documentElement.scrollHeight;
+
+    // Helper: is element visible?
+    function isVis(el) {
+      const s = window.getComputedStyle(el);
+      return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0'
+        && el.offsetWidth > 0 && el.offsetHeight > 0;
+    }
+
+    // Helper: parse rgb/rgba
+    function parseColor(c) {
+      const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      return m ? { r: +m[1], g: +m[2], b: +m[3] } : null;
+    }
+
+    // Helper: effective background
+    function effBg(el) {
+      let cur = el;
+      while (cur && cur !== document.documentElement) {
+        const s = window.getComputedStyle(cur);
+        const p = parseColor(s.backgroundColor);
+        if (p) {
+          const am = s.backgroundColor.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/);
+          const a = am ? +am[1] : 1;
+          if (a > 0.1) return p;
+        }
+        cur = cur.parentElement;
+      }
+      return { r: 255, g: 255, b: 255 };
+    }
+
+    // Collect every element
+    const allEls = document.querySelectorAll('*');
+    const elements = [];       // bounding rects for overlap detection
+    const spacingData = [];    // margin/padding
+    const textData = [];       // color contrast + typography
+    const interactiveData = []; // tap targets
+    const imageData = [];      // images
+    const headingData = [];    // heading hierarchy
+    const zIndexData = [];     // z-index map
+
+    const fontFamilies = new Set();
+    const fontSizes = new Set();
+    const spacingValues = new Set();
+
+    allEls.forEach(el => {
+      const cs = window.getComputedStyle(el);
+      if (cs.display === 'none') return;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return;
+
+      // Selector helper
+      let sel = el.tagName.toLowerCase();
+      if (el.id) sel += '#' + el.id;
+      else if (el.className && typeof el.className === 'string') {
+        const cls = el.className.trim().split(/\s+/).slice(0, 2).join('.');
+        if (cls) sel += '.' + cls;
+      }
+
+      // Bounding rect for overlap detection (only visible, meaningful elements)
+      if (isVis(el) && rect.width > 1 && rect.height > 1) {
+        elements.push({
+          sel,
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          w: Math.round(rect.width),
+          h: Math.round(rect.height),
+        });
+      }
+
+      // Spacing
+      const mt = parseFloat(cs.marginTop) || 0;
+      const mr = parseFloat(cs.marginRight) || 0;
+      const mb = parseFloat(cs.marginBottom) || 0;
+      const ml = parseFloat(cs.marginLeft) || 0;
+      const pt = parseFloat(cs.paddingTop) || 0;
+      const pr = parseFloat(cs.paddingRight) || 0;
+      const pb = parseFloat(cs.paddingBottom) || 0;
+      const pl = parseFloat(cs.paddingLeft) || 0;
+      const gap = parseFloat(cs.gap) || 0;
+
+      [mt, mr, mb, ml, pt, pr, pb, pl, gap].forEach(v => {
+        if (v !== 0) spacingValues.add(Math.round(v));
+      });
+
+      spacingData.push({ sel, mt, mr, mb, ml, pt, pr, pb, pl, gap });
+
+      // Z-index
+      const zi = cs.zIndex;
+      if (zi && zi !== 'auto' && zi !== '0') {
+        zIndexData.push({ sel, zIndex: parseInt(zi, 10) });
+      }
+
+      // Typography + contrast (text elements only)
+      const hasText = Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim());
+      if (hasText && isVis(el)) {
+        const family = cs.fontFamily;
+        const size = cs.fontSize;
+        const weight = cs.fontWeight;
+        const lineHeight = cs.lineHeight;
+        fontFamilies.add(family.split(',')[0].trim().replace(/['"]/g, ''));
+        fontSizes.add(size);
+
+        const fg = parseColor(cs.color);
+        const bg = effBg(el);
+        textData.push({
+          sel,
+          text: (el.textContent || '').trim().slice(0, 60),
+          family, size, weight, lineHeight,
+          fg: fg ? `rgb(${fg.r},${fg.g},${fg.b})` : cs.color,
+          bg: bg ? `rgb(${bg.r},${bg.g},${bg.b})` : 'rgb(255,255,255)',
+          fgRaw: fg, bgRaw: bg,
+          fontSize: parseFloat(size),
+          fontWeight: parseInt(weight) || (weight === 'bold' ? 700 : 400),
+        });
+      }
+
+      // Interactive elements
+      const isInteractive = el.matches('a, button, input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="tab"], [onclick], [tabindex]');
+      if (isInteractive && isVis(el) && el.type !== 'hidden') {
+        interactiveData.push({
+          sel,
+          tag: el.tagName.toLowerCase(),
+          text: (el.textContent || el.getAttribute('aria-label') || el.getAttribute('value') || '').trim().slice(0, 50),
+          w: Math.round(rect.width * 10) / 10,
+          h: Math.round(rect.height * 10) / 10,
+        });
+      }
+    });
+
+    // Images
+    document.querySelectorAll('img').forEach(img => {
+      const src = img.src || img.getAttribute('data-src') || '(none)';
+      const shortSrc = src.length > 80 ? src.slice(0, 77) + '...' : src;
+      const rect = img.getBoundingClientRect();
+      imageData.push({
+        src: shortSrc,
+        alt: img.hasAttribute('alt') ? img.getAttribute('alt') : null,
+        naturalW: img.naturalWidth,
+        naturalH: img.naturalHeight,
+        renderedW: img.width,
+        renderedH: img.height,
+        loading: img.getAttribute('loading'),
+        complete: img.complete,
+        belowFold: rect.top > vh,
+        broken: !img.complete && img.naturalWidth === 0 && img.getAttribute('loading') !== 'lazy',
+      });
+    });
+
+    // Headings
+    document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
+      headingData.push({
+        level: parseInt(h.tagName[1]),
+        text: (h.textContent || '').trim().slice(0, 80),
+      });
+    });
+
+    // Meta tags
+    const metaInfo = {
+      title: document.title || null,
+      description: null,
+      canonical: null,
+      viewport: null,
+      lang: document.documentElement.getAttribute('lang') || null,
+      ogTags: {},
+      h1Count: document.querySelectorAll('h1').length,
+    };
+    document.querySelectorAll('meta').forEach(m => {
+      const name = (m.getAttribute('name') || '').toLowerCase();
+      const prop = (m.getAttribute('property') || '').toLowerCase();
+      const content = m.getAttribute('content') || '';
+      if (name === 'description') metaInfo.description = content;
+      if (name === 'viewport') metaInfo.viewport = content;
+      if (prop.startsWith('og:')) metaInfo.ogTags[prop] = content;
+    });
+    const canonEl = document.querySelector('link[rel="canonical"]');
+    if (canonEl) metaInfo.canonical = canonEl.getAttribute('href');
+
+    // Form labels
+    const missingLabels = [];
+    document.querySelectorAll('input, select, textarea').forEach(inp => {
+      if (inp.type === 'hidden' || inp.type === 'submit' || inp.type === 'button') return;
+      const hasLabel = inp.id && document.querySelector(`label[for="${inp.id}"]`);
+      const hasAria = inp.getAttribute('aria-label') || inp.getAttribute('aria-labelledby');
+      const wrapped = inp.closest('label');
+      const hasTitle = inp.getAttribute('title');
+      if (!hasLabel && !hasAria && !wrapped && !hasTitle) {
+        let s = inp.tagName.toLowerCase();
+        if (inp.id) s += '#' + inp.id;
+        else if (inp.name) s += '[name=' + inp.name + ']';
+        missingLabels.push(s);
+      }
+    });
+
+    // Empty buttons
+    const emptyButtons = [];
+    document.querySelectorAll('button, [role="button"]').forEach(btn => {
+      if (!isVis(btn)) return;
+      const txt = (btn.textContent || '').trim();
+      const aria = btn.getAttribute('aria-label') || '';
+      const img = btn.querySelector('img[alt]');
+      if (!txt && !aria && !img) {
+        let s = btn.tagName.toLowerCase();
+        if (btn.className && typeof btn.className === 'string') s += '.' + btn.className.trim().split(/\s+/)[0];
+        emptyButtons.push(s);
+      }
+    });
+
+    // Empty links
+    const emptyLinks = [];
+    document.querySelectorAll('a[href]').forEach(a => {
+      if (!isVis(a)) return;
+      const txt = (a.textContent || '').trim();
+      const aria = a.getAttribute('aria-label') || '';
+      const img = a.querySelector('img[alt]');
+      if (!txt && !aria && !img) {
+        emptyLinks.push(a.getAttribute('href').slice(0, 40));
+      }
+    });
+
+    return {
+      vw, vh, bodyScrollW, bodyScrollH,
+      elementCount: elements.length,
+      elements: elements.slice(0, 500),
+      spacingData: spacingData.slice(0, 500),
+      spacingValues: [...spacingValues].sort((a, b) => a - b),
+      textData: textData.slice(0, 500),
+      fontFamilies: [...fontFamilies],
+      fontSizes: [...fontSizes].sort((a, b) => parseFloat(a) - parseFloat(b)),
+      interactiveData,
+      imageData,
+      headingData,
+      zIndexData: zIndexData.sort((a, b) => a.zIndex - b.zIndex),
+      metaInfo,
+      missingLabels: missingLabels.slice(0, 20),
+      emptyButtons: emptyButtons.slice(0, 20),
+      emptyLinks: emptyLinks.slice(0, 20),
+    };
+  });
+
+  // ── Phase 2: Process collected data in Node.js ──
+
+  // Contrast ratio calculation
+  function getLuminance(r, g, b) {
+    const [rs, gs, bs] = [r, g, b].map(c => {
+      c = c / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+  }
+
+  function contrastRatio(fg, bg) {
+    const l1 = getLuminance(fg.r, fg.g, fg.b);
+    const l2 = getLuminance(bg.r, bg.g, bg.b);
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  // Contrast failures
+  const contrastFailures = [];
+  const contrastChecked = new Set();
+  for (const t of dom.textData) {
+    if (!t.fgRaw || !t.bgRaw) continue;
+    const key = `${t.fg}|${t.bg}|${t.sel}`;
+    if (contrastChecked.has(key)) continue;
+    contrastChecked.add(key);
+    const ratio = contrastRatio(t.fgRaw, t.bgRaw);
+    const isLarge = t.fontSize >= 24 || (t.fontSize >= 18.66 && t.fontWeight >= 700);
+    const required = isLarge ? 3 : 4.5;
+    if (ratio < required) {
+      contrastFailures.push({
+        sel: t.sel,
+        text: t.text,
+        ratio: Math.round(ratio * 100) / 100,
+        required,
+        fg: t.fg,
+        bg: t.bg,
+      });
+    }
+  }
+
+  // Spacing outlier detection
+  const spacingScale = dom.spacingValues;
+  // Common design scales: 0,4,8,12,16,20,24,32,48,64,96
+  const commonScale = new Set([0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 80, 96, 128]);
+  const spacingOutliers = [];
+  for (const sd of dom.spacingData) {
+    const vals = [
+      { prop: 'margin-top', val: sd.mt },
+      { prop: 'margin-right', val: sd.mr },
+      { prop: 'margin-bottom', val: sd.mb },
+      { prop: 'margin-left', val: sd.ml },
+      { prop: 'padding-top', val: sd.pt },
+      { prop: 'padding-right', val: sd.pr },
+      { prop: 'padding-bottom', val: sd.pb },
+      { prop: 'padding-left', val: sd.pl },
+      { prop: 'gap', val: sd.gap },
+    ];
+    for (const v of vals) {
+      const rounded = Math.round(Math.abs(v.val));
+      if (rounded !== 0 && !commonScale.has(rounded) && rounded < 200) {
+        spacingOutliers.push({ sel: sd.sel, prop: v.prop, val: rounded });
+      }
+    }
+  }
+  // Deduplicate by sel+prop
+  const seenOutliers = new Set();
+  const uniqueOutliers = spacingOutliers.filter(o => {
+    const key = `${o.sel}|${o.prop}`;
+    if (seenOutliers.has(key)) return false;
+    seenOutliers.add(key);
+    return true;
+  }).slice(0, 20);
+
+  // Element overlap detection
+  const overlaps = [];
+  const rects = dom.elements;
+  // Only check elements that are likely content (limit scope for performance)
+  const checkRects = rects.slice(0, 200);
+  for (let i = 0; i < checkRects.length; i++) {
+    for (let j = i + 1; j < checkRects.length; j++) {
+      const a = checkRects[i];
+      const b = checkRects[j];
+      // Skip if one is ancestor of other (common case, not a real overlap)
+      if (a.sel.startsWith(b.sel) || b.sel.startsWith(a.sel)) continue;
+      // Check intersection
+      const overlapX = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+      const overlapY = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+      if (overlapX > 5 && overlapY > 5) {
+        const areaOverlap = overlapX * overlapY;
+        const areaSmaller = Math.min(a.w * a.h, b.w * b.h);
+        // Only flag if overlap is more than 30% of smaller element
+        if (areaSmaller > 0 && (areaOverlap / areaSmaller) > 0.3) {
+          overlaps.push({ a: a.sel, b: b.sel, overlapPx: `${overlapX}x${overlapY}` });
+        }
+      }
+    }
+    if (overlaps.length >= 20) break;
+  }
+
+  // Touch targets below minimum
+  const minTap = 48;
+  const smallTargets = dom.interactiveData.filter(e => e.w < minTap || e.h < minTap);
+
+  // Heading hierarchy check
+  let headingSkip = null;
+  let prevLevel = 0;
+  for (const h of dom.headingData) {
+    if (prevLevel > 0 && h.level > prevLevel + 1) {
+      headingSkip = `h${prevLevel} -> h${h.level}, missing h${prevLevel + 1}`;
+      break;
+    }
+    prevLevel = h.level;
+  }
+
+  // Image issues
+  const imgMissingAlt = dom.imageData.filter(i => i.alt === null);
+  const imgOversized = dom.imageData.filter(i => i.naturalW > 0 && i.renderedW > 0 && (i.naturalW / i.renderedW) > 2);
+  const imgBroken = dom.imageData.filter(i => i.broken);
+  const imgMissingLazy = dom.imageData.filter(i => i.belowFold && i.loading !== 'lazy');
+
+  // SEO checks
+  const meta = dom.metaInfo;
+  const missingOg = ['og:title', 'og:description', 'og:image'].filter(k => !meta.ogTags[k]);
+
+  // ── Phase 3: Viewport-dependent checks (overflow at breakpoints) ──
+  const breakpoints = [
+    { label: 'Desktop', width: 1280, height: 800 },
+    { label: 'Tablet', width: 768, height: 1024 },
+    { label: 'Mobile', width: 375, height: 812 },
+  ];
+
+  const vpResults = [];
+  for (const bp of breakpoints) {
+    await page.setViewportSize({ width: bp.width, height: bp.height });
+    await page.waitForTimeout(100);
+    const data = await page.evaluate(() => {
+      const vw = window.innerWidth;
+      const docW = document.documentElement.scrollWidth;
+      const offenders = [];
+      if (docW > vw) {
+        document.querySelectorAll('*').forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (r.right > vw + 1) {
+            const s = window.getComputedStyle(el);
+            if (s.display === 'none' || s.visibility === 'hidden') return;
+            let sel = el.tagName.toLowerCase();
+            if (el.id) sel += '#' + el.id;
+            else if (el.className && typeof el.className === 'string') {
+              const cls = el.className.trim().split(/\s+/)[0];
+              if (cls) sel += '.' + cls;
+            }
+            offenders.push({ sel, width: Math.round(r.width) });
+          }
+        });
+        offenders.sort((a, b) => b.width - a.width);
+      }
+      return { vw, docW, hasOverflow: docW > vw, offenders: offenders.slice(0, 5) };
+    });
+    vpResults.push({ label: bp.label, width: bp.width, ...data });
+  }
+
+  // Restore viewport
+  await page.setViewportSize(originalViewport);
+
+  // ── Phase 4: Focus order check (requires interaction) ──
+  await page.evaluate(() => {
+    if (document.activeElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
+  });
+
+  const focusElements = [];
+  const missingFocusStyle = [];
+  for (let i = 0; i < 50; i++) {
+    await page.keyboard.press('Tab');
+    const info = await page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el || el === document.body || el === document.documentElement) return null;
+      const cs = window.getComputedStyle(el);
+      const outlineW = parseFloat(cs.outlineWidth) || 0;
+      const hasOutline = outlineW > 0 && cs.outlineStyle !== 'none';
+      const hasBoxShadow = cs.boxShadow && cs.boxShadow !== 'none';
+      let sel = el.tagName.toLowerCase();
+      if (el.id) sel += '#' + el.id;
+      else if (el.className && typeof el.className === 'string') {
+        const cls = el.className.trim().split(/\s+/).slice(0, 2).join('.');
+        if (cls) sel += '.' + cls;
+      }
+      return {
+        sel,
+        text: (el.textContent || '').trim().slice(0, 40),
+        hasVisibleFocus: hasOutline || hasBoxShadow,
+        x: Math.round(el.getBoundingClientRect().x),
+        y: Math.round(el.getBoundingClientRect().y),
+      };
+    });
+    if (!info) break;
+    const fp = `${info.sel}@${info.x},${info.y}`;
+    if (focusElements.length > 0 && focusElements[0]._fp === fp) break;
+    info._fp = fp;
+    focusElements.push(info);
+    if (!info.hasVisibleFocus) {
+      missingFocusStyle.push(info);
+    }
+  }
+
+  // ── Phase 5: Dark mode comparison ──
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.waitForTimeout(300);
+  const lightColors = await page.evaluate(() => {
+    const cs = window.getComputedStyle(document.body);
+    return { bg: cs.backgroundColor, color: cs.color };
+  });
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForTimeout(300);
+  const darkColors = await page.evaluate(() => {
+    const cs = window.getComputedStyle(document.body);
+    return { bg: cs.backgroundColor, color: cs.color };
+  });
+
+  await page.emulateMedia({ colorScheme: 'no-preference' });
+
+  const darkModeActive = lightColors.bg !== darkColors.bg || lightColors.color !== darkColors.color;
+
+  // ── Phase 6: Build structured report ──
+  const allIssues = [];
+  const sections = {};
+
+  // LAYOUT
+  const layoutLines = [];
+  const desktopOverflow = vpResults.find(r => r.label === 'Desktop');
+  layoutLines.push(`  Overflow: ${desktopOverflow && desktopOverflow.hasOverflow ? `YES (body: ${desktopOverflow.docW}px > viewport: ${desktopOverflow.vw}px)` : `NONE (body: ${dom.bodyScrollW}px, viewport: ${dom.vw}px)`}`);
+  layoutLines.push(`  Element overlaps: ${overlaps.length} detected`);
+  if (overlaps.length > 0) {
+    for (const o of overlaps.slice(0, 5)) {
+      layoutLines.push(`    ${o.a} <-> ${o.b} (${o.overlapPx})`);
+    }
+  }
+  layoutLines.push('  Viewport breakpoints:');
+  for (const vp of vpResults) {
+    if (vp.hasOverflow) {
+      layoutLines.push(`    ${vp.label} (${vp.width}px): OVERFLOW (body: ${vp.docW}px > ${vp.vw}px viewport)`);
+      for (const o of vp.offenders.slice(0, 3)) {
+        layoutLines.push(`      Offender: ${o.sel} (width: ${o.width}px)`);
+      }
+      allIssues.push({ id: 'overflow-' + vp.label.toLowerCase(), severity: 'moderate', msg: `${vp.label} (${vp.width}px): overflow by ${vp.docW - vp.vw}px` });
+    } else {
+      layoutLines.push(`    ${vp.label} (${vp.width}px): OK`);
+    }
+  }
+  if (overlaps.length > 0) {
+    allIssues.push({ id: 'element-overlap', severity: 'serious', msg: `${overlaps.length} element overlap(s) detected` });
+  }
+  sections.layout = layoutLines;
+
+  // SPACING
+  const spacingLines = [];
+  spacingLines.push(`  Elements checked: ${dom.spacingData.length}`);
+  spacingLines.push(`  Spacing scale detected: [${spacingScale.slice(0, 15).join(', ')}${spacingScale.length > 15 ? ', ...' : ''}]`);
+  spacingLines.push(`  Outliers: ${uniqueOutliers.length}`);
+  for (const o of uniqueOutliers.slice(0, 10)) {
+    spacingLines.push(`    ${o.sel} { ${o.prop}: ${o.val}px } -- not in common scale`);
+    allIssues.push({ id: 'spacing-outlier', severity: 'moderate', msg: `${o.sel} { ${o.prop}: ${o.val}px }` });
+  }
+  sections.spacing = spacingLines;
+
+  // COLORS & CONTRAST
+  const contrastLines = [];
+  contrastLines.push(`  Text elements checked: ${contrastChecked.size}`);
+  contrastLines.push(`  Contrast failures (AA): ${contrastFailures.length}`);
+  for (const f of contrastFailures.slice(0, 10)) {
+    contrastLines.push(`    "${f.sel}" -- ratio ${f.ratio}:1 (need ${f.required}:1) -- fg: ${f.fg} bg: ${f.bg}`);
+    allIssues.push({ id: 'color-contrast', severity: 'critical', msg: `${f.sel}: ratio ${f.ratio}:1 (need ${f.required}:1)` });
+  }
+  if (contrastFailures.length > 10) {
+    contrastLines.push(`    ... and ${contrastFailures.length - 10} more`);
+  }
+  sections.contrast = contrastLines;
+
+  // TYPOGRAPHY
+  const typoLines = [];
+  typoLines.push(`  Font families: ${dom.fontFamilies.join(', ') || '(none detected)'}`);
+  typoLines.push(`  Unique sizes: ${dom.fontSizes.join(', ') || '(none)'}`);
+  typoLines.push(`  Consistency: ${dom.fontFamilies.length <= 4 ? 'OK' : 'WARNING'} (${dom.fontFamilies.length} families, ${dom.fontSizes.length} sizes)`);
+  const typoIssueCount = (dom.fontFamilies.length > 4 ? 1 : 0) + (dom.fontSizes.length > 10 ? 1 : 0);
+  typoLines.push(`  Issues: ${typoIssueCount}`);
+  if (dom.fontFamilies.length > 4) {
+    typoLines.push(`    Too many font families (${dom.fontFamilies.length})`);
+    allIssues.push({ id: 'font-families', severity: 'moderate', msg: `${dom.fontFamilies.length} font families detected` });
+  }
+  if (dom.fontSizes.length > 10) {
+    typoLines.push(`    Too many font sizes (${dom.fontSizes.length})`);
+    allIssues.push({ id: 'font-sizes', severity: 'moderate', msg: `${dom.fontSizes.length} unique font sizes` });
+  }
+  sections.typography = typoLines;
+
+  // TOUCH TARGETS
+  const tapLines = [];
+  tapLines.push(`  Interactive elements: ${dom.interactiveData.length}`);
+  tapLines.push(`  Below ${minTap}px minimum: ${smallTargets.length}`);
+  for (const t of smallTargets.slice(0, 10)) {
+    tapLines.push(`    ${t.sel} -- ${t.w}x${t.h}px`);
+    allIssues.push({ id: 'tap-target', severity: 'serious', msg: `${t.sel} -- ${t.w}x${t.h}px (min ${minTap}x${minTap})` });
+  }
+  if (smallTargets.length > 10) {
+    tapLines.push(`    ... and ${smallTargets.length - 10} more`);
+  }
+  sections.tapTargets = tapLines;
+
+  // IMAGES
+  const imgLines = [];
+  imgLines.push(`  Total: ${dom.imageData.length}`);
+  imgLines.push(`  Missing alt: ${imgMissingAlt.length}${imgMissingAlt.length > 0 ? ' -- ' + imgMissingAlt.slice(0, 3).map(i => i.src.slice(0, 40)).join(', ') : ''}`);
+  imgLines.push(`  Oversized: ${imgOversized.length}`);
+  imgLines.push(`  Broken src: ${imgBroken.length}`);
+  imgLines.push(`  Missing lazy: ${imgMissingLazy.length}`);
+  if (imgMissingAlt.length > 0) allIssues.push({ id: 'img-missing-alt', severity: 'critical', msg: `${imgMissingAlt.length} image(s) missing alt text` });
+  if (imgBroken.length > 0) allIssues.push({ id: 'img-broken', severity: 'serious', msg: `${imgBroken.length} broken image(s)` });
+  if (imgMissingLazy.length > 0) allIssues.push({ id: 'img-lazy', severity: 'minor', msg: `${imgMissingLazy.length} below-fold image(s) without lazy loading` });
+  sections.images = imgLines;
+
+  // ACCESSIBILITY
+  const a11yLines = [];
+  a11yLines.push(`  Missing labels: ${dom.missingLabels.length}${dom.missingLabels.length > 0 ? ' -- ' + dom.missingLabels.slice(0, 5).join(', ') : ''}`);
+  a11yLines.push(`  Empty buttons: ${dom.emptyButtons.length}${dom.emptyButtons.length > 0 ? ' -- ' + dom.emptyButtons.slice(0, 5).join(', ') : ''}`);
+  a11yLines.push(`  Empty links: ${dom.emptyLinks.length}`);
+  a11yLines.push(`  Missing lang: ${meta.lang ? `NO (lang="${meta.lang}" present)` : 'YES'}`);
+  a11yLines.push(`  Heading order: ${headingSkip ? `SKIP (${headingSkip})` : 'OK'}`);
+  if (dom.missingLabels.length > 0) allIssues.push({ id: 'missing-labels', severity: 'critical', msg: `${dom.missingLabels.length} form element(s) missing labels` });
+  if (dom.emptyButtons.length > 0) allIssues.push({ id: 'empty-buttons', severity: 'critical', msg: `${dom.emptyButtons.length} empty button(s)` });
+  if (dom.emptyLinks.length > 0) allIssues.push({ id: 'empty-links', severity: 'serious', msg: `${dom.emptyLinks.length} empty link(s)` });
+  if (!meta.lang) allIssues.push({ id: 'missing-lang', severity: 'serious', msg: 'Missing lang attribute on <html>' });
+  if (headingSkip) allIssues.push({ id: 'heading-skip', severity: 'serious', msg: `Heading order: ${headingSkip}` });
+  sections.accessibility = a11yLines;
+
+  // SEO
+  const seoLines = [];
+  const titleLen = meta.title ? meta.title.length : 0;
+  seoLines.push(`  Title: ${meta.title ? `"${meta.title.slice(0, 50)}" (${titleLen} chars)` : 'MISSING'} -- ${!meta.title ? 'FAIL' : titleLen >= 10 && titleLen <= 60 ? 'OK' : 'WARN'}`);
+  seoLines.push(`  Description: ${meta.description ? `"${meta.description.slice(0, 50)}..." (${meta.description.length} chars)` : 'MISSING'}`);
+  seoLines.push(`  Canonical: ${meta.canonical || 'MISSING'}`);
+  seoLines.push(`  Viewport: ${meta.viewport ? 'OK' : 'MISSING'}`);
+  seoLines.push(`  H1 count: ${meta.h1Count} -- ${meta.h1Count === 1 ? 'OK' : meta.h1Count === 0 ? 'MISSING' : `WARNING (${meta.h1Count} h1 tags)`}`);
+  seoLines.push(`  OG tags: ${missingOg.length === 0 ? 'OK' : 'MISSING (' + missingOg.join(', ') + ')'}`);
+  if (!meta.title) allIssues.push({ id: 'seo-title', severity: 'critical', msg: 'Missing <title>' });
+  if (!meta.description) allIssues.push({ id: 'seo-description', severity: 'serious', msg: 'Missing meta description' });
+  if (!meta.canonical) allIssues.push({ id: 'seo-canonical', severity: 'moderate', msg: 'Missing canonical URL' });
+  if (meta.h1Count === 0) allIssues.push({ id: 'seo-h1', severity: 'serious', msg: 'No <h1> on page' });
+  if (missingOg.length > 0) allIssues.push({ id: 'seo-og', severity: 'minor', msg: `Missing OG tags: ${missingOg.join(', ')}` });
+  sections.seo = seoLines;
+
+  // FOCUS ORDER
+  const focusLines = [];
+  focusLines.push(`  Focusable elements: ${focusElements.length}`);
+  focusLines.push(`  Missing focus style: ${missingFocusStyle.length}`);
+  for (const e of missingFocusStyle.slice(0, 10)) {
+    focusLines.push(`    ${e.sel} -- no visible outline/box-shadow on :focus`);
+    allIssues.push({ id: 'focus-indicator', severity: 'serious', msg: `${e.sel}: no visible focus indicator` });
+  }
+  if (missingFocusStyle.length > 10) {
+    focusLines.push(`    ... and ${missingFocusStyle.length - 10} more`);
+  }
+  sections.focusOrder = focusLines;
+
+  // Z-INDEX
+  const zLines = [];
+  zLines.push(`  Elements with z-index: ${dom.zIndexData.length}`);
+  for (const z of dom.zIndexData.slice(0, 15)) {
+    zLines.push(`    ${z.sel} { z-index: ${z.zIndex} }`);
+  }
+  if (dom.zIndexData.length > 15) {
+    zLines.push(`    ... and ${dom.zIndexData.length - 15} more`);
+  }
+  // Check for z-index conflicts (same value on siblings)
+  const zValues = new Map();
+  for (const z of dom.zIndexData) {
+    if (!zValues.has(z.zIndex)) zValues.set(z.zIndex, []);
+    zValues.get(z.zIndex).push(z.sel);
+  }
+  const zConflicts = [...zValues.entries()].filter(([, sels]) => sels.length > 1);
+  zLines.push(`  Conflicts: ${zConflicts.length === 0 ? 'NONE' : zConflicts.length + ' (same z-index on multiple elements)'}`);
+  for (const [val, sels] of zConflicts.slice(0, 5)) {
+    zLines.push(`    z-index: ${val} shared by: ${sels.slice(0, 3).join(', ')}`);
+  }
+  sections.zIndex = zLines;
+
+  // DARK MODE
+  const darkLines = [];
+  darkLines.push(`  Dark mode support: ${darkModeActive ? 'YES (styles change with prefers-color-scheme: dark)' : 'NO (no visual change detected)'}`);
+  darkLines.push(`  Light: bg=${lightColors.bg}, text=${lightColors.color}`);
+  darkLines.push(`  Dark:  bg=${darkColors.bg}, text=${darkColors.color}`);
+  if (!darkModeActive) {
+    allIssues.push({ id: 'dark-mode', severity: 'moderate', msg: 'Dark mode not implemented' });
+  }
+  sections.darkMode = darkLines;
+
+  // SUMMARY
+  const severityCounts = { critical: 0, serious: 0, moderate: 0, minor: 0 };
+  for (const issue of allIssues) {
+    const sev = issue.severity || 'moderate';
+    severityCounts[sev] = (severityCounts[sev] || 0) + 1;
+  }
+
+  // Build the final report
+  const lines = [];
+  lines.push('VISUAL AUDIT REPORT');
+  lines.push(`URL: ${url}`);
+  lines.push(`Viewport: ${originalViewport.width}x${originalViewport.height}`);
+  lines.push(`Timestamp: ${ts}`);
+  lines.push('');
+
+  const sectionMap = [
+    ['LAYOUT', sections.layout],
+    ['SPACING', sections.spacing],
+    ['COLORS & CONTRAST', sections.contrast],
+    ['TYPOGRAPHY', sections.typography],
+    ['TOUCH TARGETS', sections.tapTargets],
+    ['IMAGES', sections.images],
+    ['ACCESSIBILITY', sections.accessibility],
+    ['SEO', sections.seo],
+    ['FOCUS ORDER', sections.focusOrder],
+    ['Z-INDEX', sections.zIndex],
+    ['DARK MODE', sections.darkMode],
+  ];
+
+  for (const [title, content] of sectionMap) {
+    lines.push(`\u2550\u2550\u2550 ${title} \u2550\u2550\u2550`);
+    lines.push(...content);
+    lines.push('');
+  }
+
+  lines.push('\u2550\u2550\u2550 SUMMARY \u2550\u2550\u2550');
+  lines.push(`  Total issues: ${allIssues.length}`);
+  lines.push(`  Critical: ${severityCounts.critical} (${allIssues.filter(i => i.severity === 'critical').map(i => i.id).filter((v, i, a) => a.indexOf(v) === i).join(', ') || 'none'})`);
+  lines.push(`  Serious: ${severityCounts.serious} (${allIssues.filter(i => i.severity === 'serious').map(i => i.id).filter((v, i, a) => a.indexOf(v) === i).join(', ') || 'none'})`);
+  lines.push(`  Moderate: ${severityCounts.moderate} (${allIssues.filter(i => i.severity === 'moderate').map(i => i.id).filter((v, i, a) => a.indexOf(v) === i).join(', ') || 'none'})`);
+  lines.push(`  Minor: ${severityCounts.minor} (${allIssues.filter(i => i.severity === 'minor').map(i => i.id).filter((v, i, a) => a.indexOf(v) === i).join(', ') || 'none'})`);
+
+  return { issues: allIssues, text: lines.join('\n'), sections };
 }
