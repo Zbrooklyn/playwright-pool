@@ -9,6 +9,7 @@
 // Inspect:         console, network, run, wait, verify, locator → ./cli-commands/inspect.js
 // Mouse:           mouse move/click/drag                  → ./cli-commands/mouse.js
 // Trace:           trace start/stop                       → ./cli-commands/trace.js
+// Benchmark:       benchmark                              → ./cli-commands/benchmark.js
 // Install:         install (inline — npx playwright install chromium)
 
 import fs from 'fs';
@@ -110,6 +111,13 @@ switch (command) {
     break;
   }
 
+  // ── Benchmark (standalone — performance matrix) ────────────────
+  case 'benchmark': {
+    const { handleBenchmark } = await import('./cli-commands/benchmark.js');
+    await handleBenchmark(args.slice(1));
+    break;
+  }
+
   // ── Install Chromium ────────────────────────────────────────────
   case 'install': {
     const { execSync } = await import('child_process');
@@ -192,6 +200,9 @@ Mouse (persistent session):
 Trace (persistent session):
   trace start       Start recording a trace
   trace stop [file] Stop and save trace
+
+Benchmark (standalone):
+  benchmark         Run performance benchmark matrix (--quick, --site, --operation, --runs)
 
 Examples:
   playwright-pool init
