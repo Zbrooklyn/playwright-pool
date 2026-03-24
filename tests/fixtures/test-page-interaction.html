@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus — Dashboard</title>
+  <style>
+    :root {
+      --color-primary: #6366F1;
+      --color-primary-hover: #4F46E5;
+      --color-danger: #EF4444;
+      --color-success: #10B981;
+      --color-text: #1F2937;
+      --color-text-light: #6B7280;
+      --color-bg: #F9FAFB;
+      --color-white: #FFFFFF;
+      --color-border: #E5E7EB;
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
+      --font-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-base);
+      color: var(--color-text);
+      background: var(--color-bg);
+      line-height: 1.6;
+      min-height: 200vh; /* Tall page for scroll testing */
+    }
+
+    /* ===== Layout ===== */
+    .app-header {
+      background: var(--color-white);
+      border-bottom: 1px solid var(--color-border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--color-primary);
+    }
+
+    /* BUG 7: Auto-focus wrong element — search gets autofocus, skipping hero/main content -->
+    .search-input {
+      padding: 8px 16px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      width: 280px;
+      font-family: var(--font-base);
+      background: var(--color-bg);
+    }
+    .search-input:focus {
+      outline: 2px solid var(--color-primary);
+      outline-offset: -1px;
+      border-color: var(--color-primary);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* ===== Dropdown ===== */
+    .dropdown-wrapper {
+      position: relative;
+    }
+
+    .dropdown-trigger {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-white);
+      font-size: 14px;
+      cursor: pointer;
+      font-family: var(--font-base);
+      color: var(--color-text);
+    }
+    .dropdown-trigger:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      background: var(--color-white);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      min-width: 200px;
+      z-index: 100;
+      padding: 4px;
+    }
+    .dropdown-menu.open {
+      display: block;
+    }
+
+    .dropdown-item {
+      display: block;
+      width: 100%;
+      padding: 10px 16px;
+      font-size: 14px;
+      color: var(--color-text);
+      background: none;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: var(--font-base);
+    }
+    .dropdown-item:hover {
+      background: var(--color-bg);
+    }
+    .dropdown-item.danger {
+      color: var(--color-danger);
+    }
+
+    /* ===== Main Content ===== */
+    .main-content {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .page-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .page-subtitle {
+      font-size: 16px;
+      color: var(--color-text-light);
+      margin-bottom: 32px;
+    }
+
+    /* ===== Form Section ===== */
+    .form-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      margin-bottom: 32px;
+    }
+
+    .form-card h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--color-text);
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-family: var(--font-base);
+      color: var(--color-text);
+      background: var(--color-white);
+      transition: border-color 0.2s;
+    }
+    .form-input:focus {
+      outline: 2px solid var(--color-primary);
+      outline-offset: -1px;
+      border-color: var(--color-primary);
+    }
+
+    .form-error {
+      display: none;
+      font-size: 13px;
+      color: var(--color-danger);
+      margin-top: 6px;
+    }
+    .form-error.visible {
+      display: block;
+    }
+
+    .form-input.error {
+      border-color: var(--color-danger);
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: var(--font-base);
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s, opacity 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--color-primary);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--color-primary-hover); }
+    .btn-primary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+    .btn-secondary {
+      background: var(--color-white);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+    }
+    .btn-secondary:hover { background: var(--color-bg); }
+
+    /* BUG 9: Disabled button — has class "disabled" but NOT the disabled attribute */
+    .btn.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ===== Carousel ===== */
+    .carousel-section {
+      background: var(--color-white);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      margin-bottom: 32px;
+    }
+
+    .carousel-section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+
+    .carousel {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius-md);
+    }
+
+    .carousel-track {
+      display: flex;
+      transition: transform 0.3s ease;
+    }
+
+    .carousel-slide {
+      min-width: 100%;
+      padding: 48px 32px;
+      text-align: center;
+      border-radius: var(--radius-md);
+    }
+
+    .carousel-slide:nth-child(1) { background: linear-gradient(135deg, #6366F1, #A78BFA); color: #fff; }
+    .carousel-slide:nth-child(2) { background: linear-gradient(135deg, #10B981, #34D399); color: #fff; }
+    .carousel-slide:nth-child(3) { background: linear-gradient(135deg, #F59E0B, #FBBF24); color: #1F2937; }
+
+    .carousel-slide h3 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .carousel-slide p {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+
+    .carousel-controls {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    /* BUG 10: Carousel buttons — mouse click works, but no keyboard support (no keydown handler) -->
+    .carousel-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid var(--color-border);
+      background: var(--color-white);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 18px;
+      color: var(--color-text);
+      /* No focus-visible style either */
+    }
+    .carousel-btn:hover {
+      background: var(--color-bg);
+    }
+
+    .carousel-dots {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .carousel-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-border);
+      border: none;
+      cursor: pointer;
+      padding: 0;
+    }
+    .carousel-dot.active {
+      background: var(--color-primary);
+    }
+
+    /* ===== Modal ===== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      /* BUG 5: Scroll lock failure — no overflow:hidden applied to body when modal is open */
+    }
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--color-white);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      max-width: 480px;
+      width: 90%;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .modal h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .modal p {
+      font-size: 15px;
+      color: var(--color-text-light);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    /* ===== Hover State Test ===== */
+    .hover-test-section {
+      background: var(--color-white);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      margin-bottom: 32px;
+    }
+
+    .hover-test-section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+
+    .hover-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 640px) {
+      .hover-cards { grid-template-columns: 1fr; }
+    }
+
+    /* BUG 6: Hover state stuck — uses JS-applied class instead of :hover, so it sticks on touch -->
+    .hover-card {
+      padding: 24px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      text-align: center;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .hover-card.hovered {
+      background: var(--color-primary);
+      color: #fff;
+      border-color: var(--color-primary);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .hover-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .hover-card p {
+      font-size: 13px;
+      color: var(--color-text-light);
+    }
+    .hover-card.hovered p {
+      color: rgba(255,255,255,0.8);
+    }
+
+    /* ===== Status badge ===== */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status-badge.success {
+      background: #D1FAE5;
+      color: #065F46;
+    }
+    .status-badge.warning {
+      background: #FEF3C7;
+      color: #92400E;
+    }
+
+    /* ===== Submission counter ===== */
+    .submission-counter {
+      margin-top: 16px;
+      font-size: 14px;
+      color: var(--color-text-light);
+    }
+    .submission-counter .count {
+      font-weight: 700;
+      color: var(--color-danger);
+    }
+
+    /* ===== Keyboard shortcut hint ===== */
+    .shortcut-hint {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--color-text);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      display: none;
+      z-index: 300;
+      box-shadow: var(--shadow-lg);
+    }
+    .shortcut-hint.visible {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== Header ===== -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">Nexus</div>
+      <!-- BUG 7: Auto-focus on search input — screen readers skip everything before it -->
+      <input type="text" class="search-input" id="searchInput" placeholder="Search... (press / to focus)" autofocus>
+    </div>
+    <div class="header-actions">
+      <!-- BUG 1: Dropdown that doesn't close when clicking outside -->
+      <div class="dropdown-wrapper" id="profileDropdown">
+        <button class="dropdown-trigger" id="dropdownTrigger" aria-haspopup="true" aria-expanded="false">
+          <span style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--color-primary),#A78BFA);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">ES</span>
+          <span>Edward S.</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5l3 3 3-3"/></svg>
+        </button>
+        <div class="dropdown-menu" id="dropdownMenu" role="menu">
+          <button class="dropdown-item" role="menuitem">Profile Settings</button>
+          <button class="dropdown-item" role="menuitem">Team Management</button>
+          <button class="dropdown-item" role="menuitem">Billing</button>
+          <hr style="border:none;border-top:1px solid var(--color-border);margin:4px 0;">
+          <button class="dropdown-item danger" role="menuitem">Sign Out</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== Main Content ===== -->
+  <main class="main-content">
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle">Manage your projects, settings, and team.</p>
+
+    <!-- ===== Form with validation bugs ===== -->
+    <div class="form-card">
+      <h2>Create New Project</h2>
+      <form id="projectForm" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="projectName">Project Name</label>
+          <input type="text" class="form-input" id="projectName" name="projectName" required>
+          <!-- BUG 2: Error messages show on blur, disappear on focus, reappear on blur even when valid -->
+          <div class="form-error" id="projectNameError">Project name is required</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="projectEmail">Team Email</label>
+          <input type="email" class="form-input" id="projectEmail" name="projectEmail" required>
+          <div class="form-error" id="projectEmailError">Please enter a valid email address</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="projectDesc">Description</label>
+          <textarea class="form-input" id="projectDesc" name="projectDesc" rows="3" style="resize:vertical;"></textarea>
+        </div>
+
+        <div class="form-actions">
+          <!-- BUG 3: Submit button doesn't disable after first click — allows duplicate submissions -->
+          <button type="submit" class="btn btn-primary" id="submitBtn">Create Project</button>
+          <button type="button" class="btn btn-secondary">Cancel</button>
+        </div>
+
+        <div class="submission-counter" id="submissionCounter" style="display:none;">
+          Form submitted <span class="count" id="submitCount">0</span> time(s) — duplicate submissions detected!
+        </div>
+      </form>
+    </div>
+
+    <!-- ===== Disabled Button Bug ===== -->
+    <div class="form-card">
+      <h2>Danger Zone</h2>
+      <p style="font-size:14px;color:var(--color-text-light);margin-bottom:16px;">
+        Destructive actions that cannot be undone. These buttons should be disabled until you confirm.
+      </p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <!-- BUG 9: Button has .disabled class but NOT the disabled attribute — still clickable -->
+        <button class="btn disabled" id="deleteProjectBtn" style="background:var(--color-danger);color:#fff;"
+          onclick="alert('BUG: This button should be disabled but it was clickable!')">
+          Delete Project
+        </button>
+        <button class="btn" disabled style="background:var(--color-danger);color:#fff;opacity:0.5;cursor:not-allowed;">
+          Delete Account (Properly Disabled)
+        </button>
+      </div>
+      <p id="deleteStatus" style="font-size:13px;color:var(--color-danger);margin-top:12px;display:none;">
+        The "Delete Project" button was clicked even though it appears disabled!
+      </p>
+    </div>
+
+    <!-- ===== Hover State Stuck Bug ===== -->
+    <div class="hover-test-section">
+      <h2>Quick Actions</h2>
+      <!-- BUG 6: Hover styles use JS-applied class, so they stick on touch devices -->
+      <div class="hover-cards">
+        <div class="hover-card" data-hover="true">
+          <h3>New Task</h3>
+          <p>Create a new task for your team</p>
+        </div>
+        <div class="hover-card" data-hover="true">
+          <h3>Schedule Meeting</h3>
+          <p>Set up a meeting with your team</p>
+        </div>
+        <div class="hover-card" data-hover="true">
+          <h3>Generate Report</h3>
+          <p>Create analytics report</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Carousel ===== -->
+    <div class="carousel-section">
+      <h2>Announcements</h2>
+      <!-- BUG 10: Carousel arrow buttons work for mouse but have no keyboard support -->
+      <div class="carousel" id="carousel">
+        <div class="carousel-track" id="carouselTrack">
+          <div class="carousel-slide">
+            <h3>New Feature: AI Assistant</h3>
+            <p>Our AI-powered assistant is now available for all Pro users.</p>
+          </div>
+          <div class="carousel-slide">
+            <h3>Platform Update v3.2</h3>
+            <p>Performance improvements, new integrations, and bug fixes.</p>
+          </div>
+          <div class="carousel-slide">
+            <h3>Community Milestone</h3>
+            <p>We just crossed 10,000 active teams on the platform!</p>
+          </div>
+        </div>
+      </div>
+      <div class="carousel-controls">
+        <!-- These buttons respond to click but NOT to keyboard events -->
+        <div class="carousel-btn" id="carouselPrev" role="button" tabindex="0">&#8592;</div>
+        <div class="carousel-btn" id="carouselNext" role="button" tabindex="0">&#8594;</div>
+      </div>
+      <div class="carousel-dots" id="carouselDots">
+        <button class="carousel-dot active" data-slide="0"></button>
+        <button class="carousel-dot" data-slide="1"></button>
+        <button class="carousel-dot" data-slide="2"></button>
+      </div>
+    </div>
+
+    <!-- ===== Modal Trigger ===== -->
+    <div class="form-card">
+      <h2>Settings</h2>
+      <p style="font-size:14px;color:var(--color-text-light);margin-bottom:16px;">
+        Open the settings modal to configure your project preferences.
+      </p>
+      <button class="btn btn-primary" id="openModalBtn">Open Settings</button>
+    </div>
+  </main>
+
+  <!-- ===== Modal ===== -->
+  <!-- BUG 4: Modal trap — focus is NOT trapped, Tab goes to elements behind modal -->
+  <!-- BUG 5: Scroll lock failure — body still scrolls when modal is open -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" role="dialog" aria-labelledby="modalTitle" aria-modal="true">
+      <h2 id="modalTitle">Project Settings</h2>
+      <p>Configure your notification preferences, team permissions, and integration settings here.</p>
+      <div style="margin-bottom:20px;">
+        <label class="form-label" for="modalInput">Notification Email</label>
+        <input type="email" class="form-input" id="modalInput" placeholder="team@company.com">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="closeModalBtn">Cancel</button>
+        <button class="btn btn-primary" id="saveModalBtn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Keyboard Shortcut Toast ===== -->
+  <div class="shortcut-hint" id="shortcutHint">
+    Press <kbd style="background:#374151;padding:2px 6px;border-radius:3px;font-family:monospace;">/</kbd> to search
+  </div>
+
+  <script>
+    // =============================================
+    // BUG 1: Dropdown that doesn't close on outside click
+    // =============================================
+    const dropdownTrigger = document.getElementById('dropdownTrigger');
+    const dropdownMenu = document.getElementById('dropdownMenu');
+
+    dropdownTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = dropdownMenu.classList.toggle('open');
+      dropdownTrigger.setAttribute('aria-expanded', isOpen);
+    });
+
+    // BUG: No document click listener to close the dropdown
+    // This is intentionally missing:
+    // document.addEventListener('click', () => { dropdownMenu.classList.remove('open'); });
+
+
+    // =============================================
+    // BUG 2: Form validation timing — shows error on blur,
+    // hides on focus, but re-shows on blur even when valid
+    // =============================================
+    const projectNameInput = document.getElementById('projectName');
+    const projectNameError = document.getElementById('projectNameError');
+    const projectEmailInput = document.getElementById('projectEmail');
+    const projectEmailError = document.getElementById('projectEmailError');
+
+    // Track if field has been "touched" (blurred at least once)
+    let nameTouched = false;
+    let emailTouched = false;
+
+    projectNameInput.addEventListener('blur', () => {
+      nameTouched = true;
+      // BUG: Always shows error on blur, regardless of current value
+      projectNameError.classList.add('visible');
+      projectNameInput.classList.add('error');
+    });
+
+    projectNameInput.addEventListener('focus', () => {
+      // Hides error on focus
+      projectNameError.classList.remove('visible');
+      projectNameInput.classList.remove('error');
+    });
+
+    projectEmailInput.addEventListener('blur', () => {
+      emailTouched = true;
+      // BUG: Always shows error on blur, regardless of current value
+      projectEmailError.classList.add('visible');
+      projectEmailInput.classList.add('error');
+    });
+
+    projectEmailInput.addEventListener('focus', () => {
+      projectEmailError.classList.remove('visible');
+      projectEmailInput.classList.remove('error');
+    });
+
+
+    // =============================================
+    // BUG 3: Button double-click — no disable after submit
+    // =============================================
+    const projectForm = document.getElementById('projectForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const submissionCounter = document.getElementById('submissionCounter');
+    const submitCountEl = document.getElementById('submitCount');
+    let submitCount = 0;
+
+    projectForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      // BUG: Button is never disabled after first submission
+      submitCount++;
+      submitCountEl.textContent = submitCount;
+
+      if (submitCount > 1) {
+        submissionCounter.style.display = 'block';
+      }
+
+      // Simulate async submission
+      submitBtn.textContent = 'Creating...';
+      setTimeout(() => {
+        submitBtn.textContent = 'Create Project';
+        // Button stays enabled — can be clicked again
+      }, 1000);
+    });
+
+
+    // =============================================
+    // BUG 4 & 5: Modal — no focus trap, no scroll lock
+    // =============================================
+    const openModalBtn = document.getElementById('openModalBtn');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const saveModalBtn = document.getElementById('saveModalBtn');
+
+    openModalBtn.addEventListener('click', () => {
+      modalOverlay.classList.add('open');
+      // BUG 4: No focus trap — focus can Tab to elements behind the modal
+      // BUG 5: No scroll lock — should add overflow:hidden to body
+      // document.body.style.overflow = 'hidden'; // This is intentionally missing
+    });
+
+    closeModalBtn.addEventListener('click', () => {
+      modalOverlay.classList.remove('open');
+    });
+
+    saveModalBtn.addEventListener('click', () => {
+      modalOverlay.classList.remove('open');
+    });
+
+    // Close on overlay click (this part works)
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) {
+        modalOverlay.classList.remove('open');
+      }
+    });
+
+
+    // =============================================
+    // BUG 6: Hover state stuck — uses JS class instead of CSS :hover
+    // =============================================
+    const hoverCards = document.querySelectorAll('.hover-card[data-hover]');
+
+    hoverCards.forEach(card => {
+      card.addEventListener('mouseenter', () => {
+        card.classList.add('hovered');
+      });
+
+      card.addEventListener('mouseleave', () => {
+        // BUG: On touch devices, mouseenter fires but mouseleave may not
+        // fire reliably, leaving the "hovered" class stuck
+        card.classList.remove('hovered');
+      });
+
+      // Touch events that cause the sticky behavior
+      card.addEventListener('touchstart', () => {
+        card.classList.add('hovered');
+        // BUG: No touchend handler to remove the class
+        // On touch devices, the hovered state persists after finger lifts
+      });
+    });
+
+
+    // =============================================
+    // BUG 8: Keyboard shortcut conflict — "/" to search
+    // also types "/" into focused inputs
+    // =============================================
+    const searchInput = document.getElementById('searchInput');
+    const shortcutHint = document.getElementById('shortcutHint');
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/') {
+        // BUG: Does NOT check if an input is currently focused
+        // So pressing "/" while typing in a form field also focuses search
+        // and the "/" character gets typed into the input
+        searchInput.focus();
+        shortcutHint.classList.add('visible');
+        setTimeout(() => shortcutHint.classList.remove('visible'), 2000);
+        // Missing: e.preventDefault() when an input is NOT focused
+        // Missing: return early when an input IS focused
+      }
+
+      // Escape to close modal
+      if (e.key === 'Escape') {
+        modalOverlay.classList.remove('open');
+        dropdownMenu.classList.remove('open');
+      }
+    });
+
+
+    // =============================================
+    // BUG 9: Disabled button not actually disabled
+    // =============================================
+    const deleteProjectBtn = document.getElementById('deleteProjectBtn');
+    const deleteStatus = document.getElementById('deleteStatus');
+
+    deleteProjectBtn.addEventListener('click', () => {
+      deleteStatus.style.display = 'block';
+    });
+
+
+    // =============================================
+    // BUG 10: Carousel — click works, keyboard doesn't
+    // =============================================
+    const carouselTrack = document.getElementById('carouselTrack');
+    const carouselPrev = document.getElementById('carouselPrev');
+    const carouselNext = document.getElementById('carouselNext');
+    const carouselDots = document.querySelectorAll('.carousel-dot');
+    let currentSlide = 0;
+    const totalSlides = 3;
+
+    function goToSlide(index) {
+      if (index < 0) index = totalSlides - 1;
+      if (index >= totalSlides) index = 0;
+      currentSlide = index;
+      carouselTrack.style.transform = `translateX(-${currentSlide * 100}%)`;
+      carouselDots.forEach((dot, i) => {
+        dot.classList.toggle('active', i === currentSlide);
+      });
+    }
+
+    // Mouse click works
+    carouselPrev.addEventListener('click', () => goToSlide(currentSlide - 1));
+    carouselNext.addEventListener('click', () => goToSlide(currentSlide + 1));
+
+    // BUG: No keydown listener for keyboard navigation
+    // These elements have role="button" and tabindex="0" but pressing Enter/Space does nothing
+    // carouselPrev.addEventListener('keydown', (e) => {
+    //   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToSlide(currentSlide - 1); }
+    // });
+    // carouselNext.addEventListener('keydown', (e) => {
+    //   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToSlide(currentSlide + 1); }
+    // });
+
+    carouselDots.forEach(dot => {
+      dot.addEventListener('click', () => {
+        goToSlide(parseInt(dot.dataset.slide));
+      });
+    });
+
+
+    // =============================================
+    // Show shortcut hint briefly on load
+    // =============================================
+    setTimeout(() => {
+      shortcutHint.classList.add('visible');
+      setTimeout(() => shortcutHint.classList.remove('visible'), 3000);
+    }, 1500);
+  </script>
+
+</body>
+</html>

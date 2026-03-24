@@ -328,5 +328,260 @@
         "selector": ".quick-actions .qa-btn"
       }
     ]
+  },
+  "test-page-nuanced.html": {
+    "total_bugs": 25,
+    "bugs": [
+      {
+        "id": "nuanced-1",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Visual hierarchy inversion — secondary 'Learn More' button is larger (17px/700) than primary 'Get Started' CTA (15px/500)",
+        "selector": ".btn-secondary"
+      },
+      {
+        "id": "nuanced-2",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Misaligned baseline — hero badge icon (20px) offset 3px from text baseline via incorrect vertical-align and margin-top",
+        "selector": ".hero-badge svg"
+      },
+      {
+        "id": "nuanced-3",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Inconsistent border-radius — hero card 12px, feature cards 8px, testimonial cards 10px (three different values)",
+        "selector": ".hero-card, .feature-card, .testimonial-card"
+      },
+      {
+        "id": "nuanced-4",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Hover state inconsistency — nav links change color, CTA changes opacity, footer links add underline (three different patterns)",
+        "selector": ".nav-links a, .nav-cta-btn, .footer-links a"
+      },
+      {
+        "id": "nuanced-5",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Phantom scrollbar — metrics section has overflow:auto with content barely exceeding container height (210px in 200px)",
+        "selector": ".metrics-scroll-container"
+      },
+      {
+        "id": "nuanced-6",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Whitespace grouping error — 24px gap between feature title and its description is larger than gap between adjacent cards, breaking visual grouping",
+        "selector": ".feature-card h3"
+      },
+      {
+        "id": "nuanced-7",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Truncation ambiguity — testimonial text ends with literal '...' that looks like CSS text-overflow truncation but is actual content",
+        "selector": ".testimonial-card:nth-child(2) .testimonial-text"
+      },
+      {
+        "id": "nuanced-8",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Ghost click area — entire resource card including 40px padding is wrapped in an <a> tag with no visual affordance for the clickable region",
+        "selector": ".resource-card-link"
+      },
+      {
+        "id": "nuanced-9",
+        "category": "visual",
+        "severity": "serious",
+        "description": "Responsive gap — 3-column features grid doesn't reflow between 480px and 768px breakpoints, causing column overlap around 520px",
+        "selector": ".features-grid"
+      },
+      {
+        "id": "nuanced-10",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Off-brand color — Enterprise pricing button uses #6D28D9 (violet) instead of brand primary #6366F1 (indigo)",
+        "selector": ".pricing-btn-offbrand"
+      },
+      {
+        "id": "nuanced-11",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Focus ring missing — hamburger menu button has outline:none with no visible focus replacement",
+        "selector": ".hamburger"
+      },
+      {
+        "id": "nuanced-12",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Line-height inconsistency — second testimonial text uses line-height:1.4 while all other body text uses 1.6",
+        "selector": ".testimonial-card:nth-child(2) .testimonial-text"
+      },
+      {
+        "id": "nuanced-13",
+        "category": "visual",
+        "severity": "serious",
+        "description": "Dark mode partial implementation — testimonials section keeps white background (#FFFFFF) when prefers-color-scheme:dark is active",
+        "selector": ".testimonials-section"
+      },
+      {
+        "id": "nuanced-14",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Letter-spacing mismatch — testimonials heading uses letter-spacing:0 while all other section headings use -0.02em",
+        "selector": ".testimonials-section .section-header h2"
+      },
+      {
+        "id": "nuanced-15",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Orphaned word — hero heading wraps to leave 'Platform' alone on the last line, creating a typographic widow",
+        "selector": ".hero h1"
+      },
+      {
+        "id": "nuanced-16",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Image aspect ratio distortion — team photo containers use aspect-ratio 1/1.1 instead of 1/1, cutting off top of headshots",
+        "selector": ".team-photo-wrapper"
+      },
+      {
+        "id": "nuanced-17",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Invisible text on gradient — CTA section gradient fades from dark (#1E1B4B) to light blue (#93C5FD) with white text that becomes unreadable at the bottom",
+        "selector": ".cta-section"
+      },
+      {
+        "id": "nuanced-18",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Tab order mismatch — DOM order is nav-links then logo then CTA, but visual order via flexbox is logo then nav-links then CTA",
+        "selector": ".nav"
+      },
+      {
+        "id": "nuanced-19",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Placeholder text styling — input placeholder color and weight match typed text, making it impossible to distinguish empty from filled state",
+        "selector": ".newsletter-input"
+      },
+      {
+        "id": "nuanced-20",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Sticky header shadow missing — header becomes sticky on scroll but has no box-shadow, blending into content below",
+        "selector": ".header"
+      },
+      {
+        "id": "nuanced-21",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Double scrollbar — footer wrapped in overflow:auto container creates nested scrollbar alongside page scrollbar",
+        "selector": ".double-scroll-wrapper"
+      },
+      {
+        "id": "nuanced-22",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Touch target overlap — metrics period buttons (Daily/Weekly/Monthly/Yearly) have only 4px gap, causing tap area overlap on mobile",
+        "selector": ".touch-targets .touch-target-btn"
+      },
+      {
+        "id": "nuanced-23",
+        "category": "performance",
+        "severity": "moderate",
+        "description": "Content shift on load — Google Font (Inter) loads via display=swap causing visible layout shift as fallback font is replaced",
+        "selector": "body"
+      },
+      {
+        "id": "nuanced-24",
+        "category": "visual",
+        "severity": "minor",
+        "description": "Inconsistent icon sizes — feature icons are 24px, 20px (.icon-small), and 28px (.icon-large) instead of uniform sizing",
+        "selector": ".feature-icon svg"
+      },
+      {
+        "id": "nuanced-25",
+        "category": "visual",
+        "severity": "moderate",
+        "description": "Missing print styles — no @media print rules to hide nav, footer, or decorative elements when printed",
+        "selector": "body"
+      }
+    ]
+  },
+  "test-page-interaction.html": {
+    "total_bugs": 10,
+    "bugs": [
+      {
+        "id": "interaction-1",
+        "category": "interaction",
+        "severity": "serious",
+        "description": "Dropdown doesn't close on outside click — no document click listener to dismiss the profile dropdown menu",
+        "selector": "#dropdownMenu"
+      },
+      {
+        "id": "interaction-2",
+        "category": "interaction",
+        "severity": "serious",
+        "description": "Form validation timing — error messages always show on blur and hide on focus, reappearing on blur even when input is now valid",
+        "selector": "#projectNameError, #projectEmailError"
+      },
+      {
+        "id": "interaction-3",
+        "category": "interaction",
+        "severity": "serious",
+        "description": "Button double-click — submit button is never disabled after first click, allowing duplicate form submissions",
+        "selector": "#submitBtn"
+      },
+      {
+        "id": "interaction-4",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Modal focus trap missing — Tab key moves focus to elements behind the modal overlay instead of being trapped within the dialog",
+        "selector": ".modal"
+      },
+      {
+        "id": "interaction-5",
+        "category": "interaction",
+        "severity": "moderate",
+        "description": "Scroll lock failure — opening the modal does not set overflow:hidden on body, allowing background content to scroll",
+        "selector": "#modalOverlay"
+      },
+      {
+        "id": "interaction-6",
+        "category": "interaction",
+        "severity": "moderate",
+        "description": "Hover state stuck — hover cards use JS-applied 'hovered' class via mouseenter/touchstart without reliable touchend cleanup, causing styles to persist on touch devices",
+        "selector": ".hover-card[data-hover]"
+      },
+      {
+        "id": "interaction-7",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Auto-focus wrong element — search input has autofocus attribute, causing screen readers to skip the page title and hero content",
+        "selector": "#searchInput"
+      },
+      {
+        "id": "interaction-8",
+        "category": "interaction",
+        "severity": "moderate",
+        "description": "Keyboard shortcut conflict — pressing '/' to focus search also types '/' into currently focused input fields due to missing focus check and preventDefault",
+        "selector": "#searchInput"
+      },
+      {
+        "id": "interaction-9",
+        "category": "interaction",
+        "severity": "serious",
+        "description": "Disabled button not actually disabled — 'Delete Project' button has CSS .disabled class but no HTML disabled attribute, so it remains clickable",
+        "selector": "#deleteProjectBtn"
+      },
+      {
+        "id": "interaction-10",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Carousel not keyboard-navigable — prev/next controls have role=button and tabindex=0 but no keydown handler, so Enter/Space do nothing",
+        "selector": "#carouselPrev, #carouselNext"
+      }
+    ]
   }
 }
