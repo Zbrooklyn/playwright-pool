@@ -842,6 +842,173 @@ async function runFocusOrderAudit(page) {
   });
 }
 
+async function runSpacingAudit(page) {
+  return page.evaluate(() => {
+    const issues = [];
+
+    function isVisible(el) {
+      const style = window.getComputedStyle(el);
+      return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0'
+        && el.offsetWidth > 0 && el.offsetHeight > 0;
+    }
+
+    function buildSelector(el) {
+      const tag = el.tagName.toLowerCase();
+      const cls = el.className && typeof el.className === 'string'
+        ? '.' + el.className.trim().split(/\s+/)[0]
+        : '';
+      const id = el.id ? '#' + el.id : '';
+      return tag + id + cls;
+    }
+
+    // ── 1. Collect margin/padding values from all visible elements ──
+    const spacingFreq = {};       // value (px number) -> count
+    const spacingElements = {};   // value (px number) -> first selector seen
+    const props = [
+      'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+      'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    ];
+
+    const allElements = document.querySelectorAll('body *');
+    for (const el of allElements) {
+      if (!isVisible(el)) continue;
+      const style = window.getComputedStyle(el);
+
+      for (const prop of props) {
+        const raw = parseFloat(style[prop]);
+        if (isNaN(raw) || raw === 0) continue; // skip 0 — always valid
+        const val = Math.round(raw);
+        spacingFreq[val] = (spacingFreq[val] || 0) + 1;
+        if (!spacingElements[val]) {
+          spacingElements[val] = { selector: buildSelector(el), prop };
+        }
+      }
+    }
+
+    // ── 2. Detect dominant spacing scale ──
+    // Common design-system scales: multiples of 4, multiples of 8, multiples of 5
+    // Strategy: check which base divides the most frequently-used values
+    const entries = Object.entries(spacingFreq)
+      .map(([val, count]) => ({ val: Number(val), count }))
+      .sort((a, b) => b.count - a.count);
+
+    if (entries.length === 0) return issues;
+
+    // Total occurrences for weighting
+    const totalOccurrences = entries.reduce((sum, e) => sum + e.count, 0);
+
+    // Score each candidate base (2, 4, 5, 6, 8, 10) by what % of occurrences it explains
+    const candidateBases = [2, 4, 5, 6, 8, 10];
+    let bestBase = 4;
+    let bestCoverage = 0;
+
+    for (const base of candidateBases) {
+      let covered = 0;
+      for (const { val, count } of entries) {
+        if (val % base === 0) covered += count;
+      }
+      const coverage = covered / totalOccurrences;
+      if (coverage > bestCoverage) {
+        bestCoverage = coverage;
+        bestBase = base;
+      }
+    }
+
+    // Build the scale set: all multiples of bestBase that actually appear, plus 0
+    const scaleSet = new Set([0]);
+    for (const { val } of entries) {
+      if (val % bestBase === 0) scaleSet.add(val);
+    }
+
+    // ── 3. Flag outliers — values that don't fit the dominant scale ──
+    // Only flag if the scale explains >= 60% of values (otherwise there's no clear scale)
+    if (bestCoverage >= 0.6) {
+      for (const { val, count } of entries) {
+        if (val % bestBase !== 0 && val > 1) {
+          // Determine severity: high-frequency outliers are more serious
+          const severity = count >= 5 ? 'serious' : 'moderate';
+          const nearest = Math.round(val / bestBase) * bestBase;
+          const info = spacingElements[val];
+          issues.push({
+            category: 'spacing',
+            description: `Spacing outlier: ${val}px used ${count} time(s) — doesn't fit ${bestBase}px scale (nearest: ${nearest}px)`,
+            selector: info ? info.selector : '',
+            severity,
+            id: 'spacing-scale-outlier',
+          });
+        }
+      }
+    }
+
+    // ── 4. Check CSS Grid gap values for inconsistency ──
+    const gridGaps = {};    // gap value -> count
+    const gridGapEls = {};  // gap value -> first selector
+
+    for (const el of allElements) {
+      if (!isVisible(el)) continue;
+      const style = window.getComputedStyle(el);
+      if (style.display !== 'grid' && style.display !== 'inline-grid') continue;
+
+      // rowGap and columnGap are the resolved properties
+      const rowGap = parseFloat(style.rowGap);
+      const colGap = parseFloat(style.columnGap);
+      const selector = buildSelector(el);
+
+      for (const gap of [rowGap, colGap]) {
+        if (isNaN(gap) || gap === 0) continue;
+        const rounded = Math.round(gap);
+        gridGaps[rounded] = (gridGaps[rounded] || 0) + 1;
+        if (!gridGapEls[rounded]) gridGapEls[rounded] = selector;
+      }
+    }
+
+    const gapValues = Object.keys(gridGaps).map(Number).sort((a, b) => a - b);
+
+    if (gapValues.length > 1) {
+      // Find the most common gap value
+      let dominantGap = gapValues[0];
+      let maxCount = 0;
+      for (const v of gapValues) {
+        if (gridGaps[v] > maxCount) {
+          maxCount = gridGaps[v];
+          dominantGap = v;
+        }
+      }
+
+      // Flag gap values that differ from the dominant gap
+      for (const v of gapValues) {
+        if (v !== dominantGap) {
+          issues.push({
+            category: 'spacing',
+            description: `Grid gap inconsistency: ${v}px (used ${gridGaps[v]} time(s)) vs dominant ${dominantGap}px — selector: ${gridGapEls[v]}`,
+            selector: gridGapEls[v] || '',
+            severity: 'moderate',
+            id: 'grid-gap-inconsistency',
+          });
+        }
+      }
+    }
+
+    // Also flag grid gaps that don't fit the detected spacing scale
+    if (bestCoverage >= 0.6) {
+      for (const v of gapValues) {
+        if (v % bestBase !== 0 && v > 1) {
+          const nearest = Math.round(v / bestBase) * bestBase;
+          issues.push({
+            category: 'spacing',
+            description: `Grid gap ${v}px doesn't fit ${bestBase}px spacing scale (nearest: ${nearest}px) — selector: ${gridGapEls[v]}`,
+            selector: gridGapEls[v] || '',
+            severity: 'moderate',
+            id: 'grid-gap-scale-outlier',
+          });
+        }
+      }
+    }
+
+    return issues;
+  });
+}
+
 // ─── Scoring Engine ─────────────────────────────────────────────────────
 
 function scoreFindingsAgainstBugs(findings, knownBugs) {
