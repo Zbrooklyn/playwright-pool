@@ -5,6 +5,7 @@
 //
 // Usage:
 //   playwright-pool benchmark [options]
+//   playwright-pool benchmark compare <baseline.json> <current.json>
 //
 // Flags:
 //   --site <name>        Run only one site (trivial|static|spa|heavy|complex)
@@ -15,6 +16,7 @@
 //   --output <path>      Save results JSON (default: ./benchmark-results-<timestamp>.json)
 //   --quick              Quick mode: 1 site, 3 operations, 1 run
 //   --timeout <ms>       Per-operation timeout in ms (default: 60000)
+//   --warmup <n>         Warmup iterations before measured runs (default: 0)
 //   --dry-run            Show matrix without running
 
 import fs from 'fs';
@@ -65,12 +67,18 @@ const OPERATIONS = [
 // ─── Entry Point ─────────────────────────────────────────────────────────
 
 export async function handleBenchmark(args) {
-  const { flags } = parseArgs(args);
+  const { flags, positional } = parseArgs(args);
+
+  // Handle 'compare' subcommand before the main benchmark logic
+  if (positional[0] === 'compare') {
+    return handleCompare(positional.slice(1));
+  }
 
   // Parse options
   const quick = !!flags.quick;
   const dryRun = !!flags['dry-run'];
   const runsPerConfig = quick ? 1 : parseInt(flags.runs || '5', 10);
+  const warmupRuns = parseInt(flags.warmup || '0', 10);
   const modeFilter = flags.mode || 'headless_cli';
   const siteFilter = flags.site || null;
   const opFilter = flags.operation || null;
@@ -97,6 +105,7 @@ export async function handleBenchmark(args) {
   console.log(`  Total runs:      ${totalRuns}`);
   console.log(`  Mode:            ${modeFilter}`);
   console.log(`  Timeout:         ${opTimeout}ms`);
+  console.log(`  Warmup:          ${warmupRuns}`);
   console.log(`  Output:          ${outputPath}`);
   if (quick) console.log('  ** QUICK MODE — reduced matrix **');
   console.log('='.repeat(60));
@@ -118,6 +127,22 @@ export async function handleBenchmark(args) {
   for (const config of matrix) {
     configIdx++;
     const configResults = [];
+
+    // Warmup iterations (results discarded)
+    for (let w = 1; w <= warmupRuns; w++) {
+      const warmupLabel = `${config.operation} | ${config.site} | warmup ${w}/${warmupRuns}`;
+      process.stdout.write(`  [warmup] ${warmupLabel} — `);
+      try {
+        if (config.concurrency > 1) {
+          await runConcurrent(config, opTimeout);
+        } else {
+          await runSingle(config, opTimeout);
+        }
+        console.log('done');
+      } catch {
+        console.log('skipped');
+      }
+    }
 
     for (let run = 1; run <= runsPerConfig; run++) {
       const progress = `[${((configIdx - 1) * runsPerConfig + run)}/${totalRuns}]`;
@@ -492,21 +517,57 @@ function computeStats(runs) {
   const outputs = runs.map(r => r.outputSize);
 
   if (times.length === 0) {
-    return { median: -1, p95: -1, min: -1, max: -1, successRate: `0/${runs.length}`, avgOutput: 0 };
+    return {
+      median: -1, mean: -1, p95: -1, min: -1, max: -1,
+      stddev: -1, ci95: [-1, -1], cv: -1, cvUnstable: false,
+      outliers: [], successRate: `0/${runs.length}`, avgOutput: 0,
+    };
   }
 
-  const median = times[Math.floor(times.length / 2)];
-  const p95idx = Math.min(Math.floor(times.length * 0.95), times.length - 1);
+  const n = times.length;
+  const median = times[Math.floor(n / 2)];
+  const mean = times.reduce((s, v) => s + v, 0) / n;
+  const p95idx = Math.min(Math.floor(n * 0.95), n - 1);
   const p95 = times[p95idx];
   const min = times[0];
-  const max = times[times.length - 1];
+  const max = times[n - 1];
   const avgOutput = outputs.reduce((a, b) => a + b, 0) / outputs.length;
+
+  // Sample standard deviation
+  const variance = n > 1
+    ? times.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1)
+    : 0;
+  const stddev = Math.sqrt(variance);
+
+  // 95% confidence interval (stderr * 1.96)
+  const stderr = stddev / Math.sqrt(n);
+  const ci95 = [mean - 1.96 * stderr, mean + 1.96 * stderr];
+
+  // Coefficient of variation (stddev/mean)
+  const cv = mean > 0 ? stddev / mean : 0;
+  const cvUnstable = cv > 0.10;
+
+  // IQR-based outlier detection
+  const q1 = times[Math.floor(n * 0.25)];
+  const q3 = times[Math.floor(n * 0.75)];
+  const iqr = q3 - q1;
+  const lowerFence = q1 - 1.5 * iqr;
+  const upperFence = q3 + 1.5 * iqr;
+  const outliers = times
+    .map((t, i) => ({ run: i + 1, time: t }))
+    .filter(({ time }) => time < lowerFence || time > upperFence);
 
   return {
     median,
+    mean,
     p95,
     min,
     max,
+    stddev,
+    ci95,
+    cv,
+    cvUnstable,
+    outliers,
     successRate: `${successful.length}/${runs.length}`,
     avgOutput,
   };
@@ -566,17 +627,20 @@ function printMatrixPreview(matrix) {
 
 function printSummary(results) {
   console.log('BENCHMARK RESULTS');
-  console.log('='.repeat(100));
+  console.log('='.repeat(140));
   console.log('');
 
-  const COL = { op: 22, site: 9, mode: 14, conc: 6, median: 8, p95: 8, success: 9, output: 8 };
+  const COL = { op: 22, site: 9, mode: 14, conc: 6, median: 8, meanCI: 20, stddev: 8, cv: 14, outliers: 8, success: 9, output: 8 };
   const header =
     padRight('Operation', COL.op) + ' | ' +
     padRight('Site', COL.site) + ' | ' +
     padRight('Mode', COL.mode) + ' | ' +
     padLeft('Conc', COL.conc) + ' | ' +
     padLeft('Median', COL.median) + ' | ' +
-    padLeft('P95', COL.p95) + ' | ' +
+    padRight('Mean\u00B1CI', COL.meanCI) + ' | ' +
+    padLeft('StdDev', COL.stddev) + ' | ' +
+    padRight('CV', COL.cv) + ' | ' +
+    padLeft('Outliers', COL.outliers) + ' | ' +
     padLeft('Success', COL.success) + ' | ' +
     padLeft('Output', COL.output);
 
@@ -584,15 +648,193 @@ function printSummary(results) {
   console.log('-'.repeat(header.length));
 
   for (const { config, stats } of results) {
+    // Format Mean±CI
+    const meanCI = stats.mean >= 0
+      ? `${formatMs(stats.mean)}\u00B1${formatMs(1.96 * stats.stddev / Math.sqrt(parseInt(stats.successRate, 10) || 1))}`
+      : 'N/A';
+
+    // Format CV with unstable flag
+    const cvStr = stats.cv >= 0
+      ? `${(stats.cv * 100).toFixed(1)}%${stats.cvUnstable ? ' (unstable)' : ''}`
+      : 'N/A';
+
+    // Format outlier count
+    const outlierStr = stats.outliers ? String(stats.outliers.length) : '0';
+
     console.log(
       padRight(config.operation, COL.op) + ' | ' +
       padRight(config.site, COL.site) + ' | ' +
       padRight(config.mode, COL.mode) + ' | ' +
       padLeft(String(config.concurrency), COL.conc) + ' | ' +
       padLeft(formatMs(stats.median), COL.median) + ' | ' +
-      padLeft(formatMs(stats.p95), COL.p95) + ' | ' +
+      padRight(meanCI, COL.meanCI) + ' | ' +
+      padLeft(formatMs(stats.stddev), COL.stddev) + ' | ' +
+      padRight(cvStr, COL.cv) + ' | ' +
+      padLeft(outlierStr, COL.outliers) + ' | ' +
       padLeft(stats.successRate, COL.success) + ' | ' +
       padLeft(formatBytes(stats.avgOutput), COL.output)
     );
+  }
+}
+
+// ─── Welch's t-test ──────────────────────────────────────────────────────
+
+function normalCDF(x) {
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+  const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x) / Math.sqrt(2);
+  const t = 1 / (1 + p * x);
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return 0.5 * (1 + sign * y);
+}
+
+function welchTTest(a, b) {
+  const n1 = a.length, n2 = b.length;
+  const mean1 = a.reduce((s, v) => s + v, 0) / n1;
+  const mean2 = b.reduce((s, v) => s + v, 0) / n2;
+  const var1 = a.reduce((s, v) => s + (v - mean1) ** 2, 0) / (n1 - 1);
+  const var2 = b.reduce((s, v) => s + (v - mean2) ** 2, 0) / (n2 - 1);
+  const se = Math.sqrt(var1 / n1 + var2 / n2);
+  if (se === 0) return { t: 0, p: 1, significant: false, delta: 0, deltaPct: 0 };
+  const t = (mean1 - mean2) / se;
+  // Approximate p-value using normal distribution for large samples
+  const pVal = 2 * (1 - normalCDF(Math.abs(t)));
+  return {
+    t,
+    p: pVal,
+    significant: pVal < 0.05,
+    delta: mean2 - mean1,
+    deltaPct: ((mean2 - mean1) / mean1) * 100,
+  };
+}
+
+// ─── Compare Subcommand ──────────────────────────────────────────────────
+
+function handleCompare(args) {
+  if (args.length < 2) {
+    console.error('Usage: playwright-pool benchmark compare <baseline.json> <current.json>');
+    process.exit(1);
+  }
+
+  const [baselinePath, currentPath] = args;
+
+  // Load and parse files
+  let baseline, current;
+  try {
+    baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+  } catch (err) {
+    console.error(`Cannot read baseline file: ${baselinePath}`);
+    console.error(`  ${err.message}`);
+    process.exit(1);
+  }
+  try {
+    current = JSON.parse(fs.readFileSync(currentPath, 'utf8'));
+  } catch (err) {
+    console.error(`Cannot read current file: ${currentPath}`);
+    console.error(`  ${err.message}`);
+    process.exit(1);
+  }
+
+  // Build lookup maps: key = "operation|site|mode|concurrency" -> wallTime[]
+  function buildMap(report) {
+    const map = new Map();
+    for (const entry of report.results) {
+      const key = `${entry.config.operation}|${entry.config.site}|${entry.config.mode}|${entry.config.concurrency}`;
+      const times = entry.runs
+        .map(r => r.wallTime)
+        .filter(t => t >= 0);
+      if (times.length > 0) {
+        map.set(key, times);
+      }
+    }
+    return map;
+  }
+
+  const baseMap = buildMap(baseline);
+  const currMap = buildMap(current);
+
+  // Find common operations
+  const commonKeys = [...baseMap.keys()].filter(k => currMap.has(k));
+
+  if (commonKeys.length === 0) {
+    console.error('No common operations found between the two result files.');
+    process.exit(1);
+  }
+
+  console.log('');
+  console.log('BENCHMARK COMPARISON');
+  console.log('='.repeat(120));
+  console.log(`  Baseline: ${baselinePath} (${baseline.timestamp})`);
+  console.log(`  Current:  ${currentPath} (${current.timestamp})`);
+  console.log(`  Common operations: ${commonKeys.length}`);
+  console.log('='.repeat(120));
+  console.log('');
+
+  const COL = { op: 22, site: 9, mode: 14, conc: 6, bMedian: 10, cMedian: 10, delta: 10, pVal: 10, verdict: 12 };
+  const header =
+    padRight('Operation', COL.op) + ' | ' +
+    padRight('Site', COL.site) + ' | ' +
+    padRight('Mode', COL.mode) + ' | ' +
+    padLeft('Conc', COL.conc) + ' | ' +
+    padLeft('Base Med', COL.bMedian) + ' | ' +
+    padLeft('Curr Med', COL.cMedian) + ' | ' +
+    padLeft('Delta%', COL.delta) + ' | ' +
+    padLeft('p-value', COL.pVal) + ' | ' +
+    padRight('Verdict', COL.verdict);
+
+  console.log(header);
+  console.log('-'.repeat(header.length));
+
+  let hasRegression = false;
+
+  for (const key of commonKeys) {
+    const [operation, site, mode, conc] = key.split('|');
+    const baseTimes = baseMap.get(key);
+    const currTimes = currMap.get(key);
+
+    const baseMedian = baseTimes.slice().sort((a, b) => a - b)[Math.floor(baseTimes.length / 2)];
+    const currMedian = currTimes.slice().sort((a, b) => a - b)[Math.floor(currTimes.length / 2)];
+
+    // Need at least 2 samples in each for t-test
+    let verdict, pStr, deltaStr;
+    if (baseTimes.length < 2 || currTimes.length < 2) {
+      verdict = 'N/A';
+      pStr = 'N/A';
+      deltaStr = `${((currMedian - baseMedian) / baseMedian * 100).toFixed(1)}%`;
+    } else {
+      const result = welchTTest(baseTimes, currTimes);
+      pStr = result.p.toFixed(4);
+      deltaStr = `${result.deltaPct >= 0 ? '+' : ''}${result.deltaPct.toFixed(1)}%`;
+
+      if (result.significant && result.delta < 0) {
+        verdict = 'FASTER';
+      } else if (result.significant && result.delta > 0) {
+        verdict = 'REGRESSION';
+        hasRegression = true;
+      } else {
+        verdict = 'SAME';
+      }
+    }
+
+    console.log(
+      padRight(operation, COL.op) + ' | ' +
+      padRight(site, COL.site) + ' | ' +
+      padRight(mode, COL.mode) + ' | ' +
+      padLeft(conc, COL.conc) + ' | ' +
+      padLeft(formatMs(baseMedian), COL.bMedian) + ' | ' +
+      padLeft(formatMs(currMedian), COL.cMedian) + ' | ' +
+      padLeft(deltaStr, COL.delta) + ' | ' +
+      padLeft(pStr, COL.pVal) + ' | ' +
+      padRight(verdict, COL.verdict)
+    );
+  }
+
+  console.log('');
+  if (hasRegression) {
+    console.log('RESULT: REGRESSION DETECTED — one or more operations are significantly slower.');
+    process.exit(2);
+  } else {
+    console.log('RESULT: No regressions detected.');
   }
 }

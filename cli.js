@@ -202,7 +202,8 @@ Trace (persistent session):
   trace stop [file] Stop and save trace
 
 Benchmark (standalone):
-  benchmark         Run performance benchmark matrix (--quick, --site, --operation, --runs)
+  benchmark              Run performance benchmark matrix (--quick, --site, --operation, --runs, --warmup)
+  benchmark compare <a> <b>  Compare two benchmark JSON files (Welch's t-test regression detection)
 
 Examples:
   playwright-pool init
