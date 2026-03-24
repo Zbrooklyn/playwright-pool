@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
-// playwright-pool CLI — standalone setup, config, and audit tool
+// playwright-pool CLI — thin router dispatching to command modules
 //
-// Commands:
-//   init    — Create ~/.playwright-pool/ directory structure
-//   login   — Launch headed browser to save credentials to golden profile
-//   config  — Output .mcp.json snippet for Claude Code
-//   status  — Show pool directories and golden profile status
-//   clean   — Remove orphaned pool-context directories
-//   audit   — Standalone audit: accessibility, meta, breakpoints, contrast
+// Setup (inline):  init, login, config, status, clean
+// Browser:         browser launch/navigate/click/type/... → ./cli-commands/browser.js
+// Quick:           screenshot, snap, eval, pdf            → ./cli-commands/quick.js
+// Audit:           audit <url>, audit list, audit diff     → ./cli-commands/audit.js
+// Inspect:         console, network, run, wait, verify, locator → ./cli-commands/inspect.js
+// Mouse:           mouse move/click/drag                  → ./cli-commands/mouse.js
+// Trace:           trace start/stop                       → ./cli-commands/trace.js
+// Install:         install (inline — npx playwright install chromium)
 
 import fs from 'fs';
 import os from 'os';
@@ -29,12 +30,20 @@ const POOL_CONTEXTS = path.join(POOL_BASE, 'pool-contexts');
 const args = process.argv.slice(2);
 const command = args[0];
 
+// Global flags
+if (args.includes('--version') || args.includes('-V')) {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+  console.log(pkg.version);
+  process.exit(0);
+}
+
 if (!command || command === '--help' || command === '-h') {
   printUsage();
   process.exit(0);
 }
 
 switch (command) {
+  // ── Setup commands (inline implementations) ─────────────────────
   case 'init':
     await cmdInit();
     break;
@@ -50,9 +59,66 @@ switch (command) {
   case 'clean':
     await cmdClean();
     break;
-  case 'audit':
-    await cmdAudit(args[1], args.slice(2));
+
+  // ── Browser commands (persistent browser context) ───────────────
+  case 'browser': {
+    const { handleBrowser } = await import('./cli-commands/browser.js');
+    await handleBrowser(args.slice(1));
     break;
+  }
+
+  // ── Quick operations (standalone — launch, do, close) ───────────
+  case 'screenshot':
+  case 'snap':
+  case 'eval':
+  case 'pdf': {
+    const { handleQuick } = await import('./cli-commands/quick.js');
+    await handleQuick(command, args.slice(1));
+    break;
+  }
+
+  // ── Audit (standalone — full audit suite) ───────────────────────
+  case 'audit': {
+    const { handleAudit } = await import('./cli-commands/audit.js');
+    await handleAudit(args.slice(1));
+    break;
+  }
+
+  // ── Inspection commands (persistent browser context) ────────────
+  case 'console':
+  case 'network':
+  case 'run':
+  case 'wait':
+  case 'verify':
+  case 'locator': {
+    const { handleInspect } = await import('./cli-commands/inspect.js');
+    await handleInspect(command, args.slice(1));
+    break;
+  }
+
+  // ── Mouse commands (persistent browser context) ─────────────────
+  case 'mouse': {
+    const { handleMouse } = await import('./cli-commands/mouse.js');
+    await handleMouse(args.slice(1));
+    break;
+  }
+
+  // ── Trace commands (persistent browser context) ─────────────────
+  case 'trace': {
+    const { handleTrace } = await import('./cli-commands/trace.js');
+    await handleTrace(args.slice(1));
+    break;
+  }
+
+  // ── Install Chromium ────────────────────────────────────────────
+  case 'install': {
+    const { execSync } = await import('child_process');
+    console.log('Installing Chromium...');
+    execSync('npx playwright install chromium', { stdio: 'inherit' });
+    console.log('Chromium installed.');
+    break;
+  }
+
   default:
     console.error(`Unknown command: ${command}`);
     printUsage();
@@ -68,20 +134,72 @@ playwright-pool CLI
 Usage:
   playwright-pool <command> [options]
 
-Commands:
+Global Flags:
+  --version, -V     Show version number
+  --help, -h        Show this help message
+
+Setup:
   init              Create ~/.playwright-pool/ directory structure
   login [url]       Launch browser to log in (default: https://accounts.google.com)
   config            Output .mcp.json snippet for Claude Code
   status            Show pool directories and golden profile info
   clean             Remove orphaned pool-context directories
-  audit <url>       Run accessibility, meta, breakpoints, and contrast audits
+  install           Install Chromium for Playwright
+
+Browser (persistent session):
+  browser launch    Launch a persistent browser session
+  browser navigate  Navigate to a URL
+  browser click     Click an element
+  browser type      Type text into an element
+  browser key       Press a keyboard key
+  browser fill      Fill a form field
+  browser select    Select a dropdown option
+  browser hover     Hover over an element
+  browser drag      Drag an element
+  browser upload    Upload a file
+  browser dialog    Handle a dialog
+  browser resize    Resize the viewport
+  browser tabs      List open tabs
+  browser back      Navigate back
+  browser list      List browser sessions
+  browser switch    Switch to a browser session
+  browser close     Close browser session(s)
+
+Quick Operations (standalone):
+  screenshot <url>  Take a screenshot (--full-page, --mobile, --breakpoints)
+  snap <url>        Get accessibility snapshot (--interactive)
+  eval <url> <expr> Evaluate JavaScript expression
+  pdf <url>         Save page as PDF
+
+Audit (standalone):
+  audit <url>       Run audit suite (--only, --skip, --category, --json)
+  audit list        List all available audits
+  audit diff <a> <b> Pixel-diff two screenshots
+
+Inspection (persistent session):
+  console           Show console messages (--level)
+  network           Show network requests (--filter)
+  run <code>        Run code against the active page
+  wait <condition>  Wait for text, selector, or timeout
+  verify <check>    Verify text, element, list, or value
+  locator <query>   Generate a Playwright locator
+
+Mouse (persistent session):
+  mouse move <x> <y>         Move mouse to coordinates
+  mouse click <x> <y>        Click at coordinates
+  mouse drag <x1> <y1> <x2> <y2>  Drag between coordinates
+
+Trace (persistent session):
+  trace start       Start recording a trace
+  trace stop [file] Stop and save trace
 
 Examples:
   playwright-pool init
   playwright-pool login
-  playwright-pool login https://github.com/login
-  playwright-pool config
-  playwright-pool audit https://example.com
+  playwright-pool screenshot https://example.com --mobile
+  playwright-pool audit https://example.com --only meta,accessibility
+  playwright-pool browser launch
+  playwright-pool browser navigate https://example.com
 `);
 }
 
@@ -293,448 +411,3 @@ function confirm(prompt) {
   });
 }
 
-// ─── audit ────────────────────────────────────────────────────────
-
-async function cmdAudit(url, extraArgs) {
-  if (!url) {
-    console.error('Usage: playwright-pool audit <url>');
-    console.error('Example: playwright-pool audit https://example.com');
-    process.exit(1);
-  }
-
-  // Validate URL
-  try {
-    new URL(url);
-  } catch {
-    console.error(`Invalid URL: ${url}`);
-    process.exit(1);
-  }
-
-  console.log(`Auditing: ${url}`);
-  console.log('Launching browser...');
-  console.log();
-
-  const { chromium } = await import('playwright');
-
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  const page = await context.newPage();
-
-  try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    // Extra wait for JS-heavy pages
-    await page.waitForTimeout(1000);
-
-    // 1. SEO Meta Audit
-    console.log('='.repeat(60));
-    console.log('  SEO METADATA AUDIT');
-    console.log('='.repeat(60));
-    await runMetaAudit(page);
-
-    // 2. Accessibility Audit
-    console.log();
-    console.log('='.repeat(60));
-    console.log('  ACCESSIBILITY AUDIT');
-    console.log('='.repeat(60));
-    await runAccessibilityAudit(page);
-
-    // 3. Color Contrast Audit
-    console.log();
-    console.log('='.repeat(60));
-    console.log('  COLOR CONTRAST AUDIT');
-    console.log('='.repeat(60));
-    await runContrastAudit(page);
-
-    // 4. Breakpoint Screenshots
-    console.log();
-    console.log('='.repeat(60));
-    console.log('  BREAKPOINT AUDIT');
-    console.log('='.repeat(60));
-    await runBreakpointAudit(page);
-
-    console.log();
-    console.log('Audit complete.');
-  } catch (err) {
-    console.error(`Audit failed: ${err.message}`);
-    process.exit(1);
-  } finally {
-    await browser.close();
-  }
-}
-
-// ─── Audit: Meta ──────────────────────────────────────────────────
-
-async function runMetaAudit(page) {
-  const meta = await page.evaluate(() => {
-    const result = {
-      url: window.location.href,
-      title: document.title || null,
-      description: null,
-      canonical: null,
-      robots: null,
-      viewport: null,
-      charset: null,
-      ogTags: {},
-      twitterTags: {},
-      headings: { h1: [], h2: [], h3: [], h4: [], h5: [], h6: [] },
-      structuredData: [],
-      issues: [],
-    };
-
-    const metas = document.querySelectorAll('meta');
-    metas.forEach((m) => {
-      const name = (m.getAttribute('name') || '').toLowerCase();
-      const property = (m.getAttribute('property') || '').toLowerCase();
-      const content = m.getAttribute('content') || '';
-
-      if (name === 'description') result.description = content;
-      if (name === 'robots') result.robots = content;
-      if (name === 'viewport') result.viewport = content;
-      if (m.getAttribute('charset')) result.charset = m.getAttribute('charset');
-      if (m.httpEquiv?.toLowerCase() === 'content-type') {
-        const match = content.match(/charset=([^\s;]+)/i);
-        if (match) result.charset = match[1];
-      }
-
-      if (property.startsWith('og:')) result.ogTags[property] = content;
-      if (name.startsWith('twitter:') || property.startsWith('twitter:')) {
-        result.twitterTags[name || property] = content;
-      }
-    });
-
-    const canonical = document.querySelector('link[rel="canonical"]');
-    if (canonical) result.canonical = canonical.getAttribute('href');
-
-    for (let i = 1; i <= 6; i++) {
-      const headings = document.querySelectorAll(`h${i}`);
-      headings.forEach((h) => {
-        result.headings[`h${i}`].push((h.textContent || '').trim().slice(0, 100));
-      });
-    }
-
-    const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
-    jsonLdScripts.forEach((script) => {
-      try {
-        const data = JSON.parse(script.textContent);
-        result.structuredData.push(data['@type'] || 'Unknown');
-      } catch {}
-    });
-
-    // Issue checks
-    if (!result.title) result.issues.push('FAIL: Missing <title>');
-    else if (result.title.length < 10) result.issues.push('WARN: Title too short (< 10 chars)');
-    else if (result.title.length > 60) result.issues.push('WARN: Title too long (> 60 chars)');
-    else result.issues.push('PASS: Title length OK');
-
-    if (!result.description) result.issues.push('FAIL: Missing meta description');
-    else if (result.description.length < 50) result.issues.push('WARN: Description too short (< 50 chars)');
-    else if (result.description.length > 160) result.issues.push('WARN: Description too long (> 160 chars)');
-    else result.issues.push('PASS: Description length OK');
-
-    if (!result.viewport) result.issues.push('FAIL: Missing viewport meta');
-    else result.issues.push('PASS: Viewport meta present');
-
-    if (!result.canonical) result.issues.push('WARN: No canonical URL');
-    else result.issues.push('PASS: Canonical URL set');
-
-    const h1Count = result.headings.h1.length;
-    if (h1Count === 0) result.issues.push('FAIL: No <h1> on page');
-    else if (h1Count > 1) result.issues.push(`WARN: Multiple <h1> tags (${h1Count})`);
-    else result.issues.push('PASS: Single <h1>');
-
-    if (!result.ogTags['og:title']) result.issues.push('WARN: Missing og:title');
-    if (!result.ogTags['og:description']) result.issues.push('WARN: Missing og:description');
-    if (!result.ogTags['og:image']) result.issues.push('WARN: Missing og:image');
-
-    return result;
-  });
-
-  console.log(`URL: ${meta.url}`);
-  console.log();
-  console.log('--- Basic ---');
-  console.log(`  Title: ${meta.title || '(missing)'}${meta.title ? ` (${meta.title.length} chars)` : ''}`);
-  console.log(`  Description: ${meta.description ? meta.description.slice(0, 80) + (meta.description.length > 80 ? '...' : '') : '(missing)'}${meta.description ? ` (${meta.description.length} chars)` : ''}`);
-  console.log(`  Canonical: ${meta.canonical || '(not set)'}`);
-  console.log(`  Robots: ${meta.robots || '(not set)'}`);
-  console.log(`  Viewport: ${meta.viewport || '(missing)'}`);
-  console.log(`  Charset: ${meta.charset || '(not set)'}`);
-
-  const ogEntries = Object.entries(meta.ogTags);
-  if (ogEntries.length > 0) {
-    console.log();
-    console.log('--- Open Graph ---');
-    for (const [k, v] of ogEntries) console.log(`  ${k}: ${v.slice(0, 100)}`);
-  }
-
-  const twEntries = Object.entries(meta.twitterTags);
-  if (twEntries.length > 0) {
-    console.log();
-    console.log('--- Twitter Cards ---');
-    for (const [k, v] of twEntries) console.log(`  ${k}: ${v.slice(0, 100)}`);
-  }
-
-  console.log();
-  console.log('--- Heading Hierarchy ---');
-  let hasHeadings = false;
-  for (let i = 1; i <= 6; i++) {
-    const key = `h${i}`;
-    if (meta.headings[key].length > 0) {
-      hasHeadings = true;
-      for (const text of meta.headings[key]) {
-        console.log(`  ${'  '.repeat(i - 1)}H${i}: ${text}`);
-      }
-    }
-  }
-  if (!hasHeadings) console.log('  (none)');
-
-  if (meta.structuredData.length > 0) {
-    console.log();
-    console.log('--- Structured Data (JSON-LD) ---');
-    for (const t of meta.structuredData) console.log(`  @type: ${t}`);
-  }
-
-  console.log();
-  console.log('--- Results ---');
-  for (const issue of meta.issues) console.log(`  ${issue}`);
-}
-
-// ─── Audit: Accessibility ─────────────────────────────────────────
-
-async function runAccessibilityAudit(page) {
-  const violations = await page.evaluate(() => {
-    const violations = [];
-
-    function isVisible(el) {
-      const style = window.getComputedStyle(el);
-      return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0'
-        && el.offsetWidth > 0 && el.offsetHeight > 0;
-    }
-
-    // 1. Images without alt text
-    const images = document.querySelectorAll('img');
-    let imgMissing = 0;
-    images.forEach((img) => {
-      if (!img.hasAttribute('alt')) imgMissing++;
-    });
-    if (imgMissing > 0) {
-      violations.push({ id: 'image-alt', impact: 'critical', count: imgMissing, description: 'Images missing alt text' });
-    }
-
-    // 2. Form inputs without labels
-    const inputs = document.querySelectorAll('input, select, textarea');
-    let inputMissing = 0;
-    inputs.forEach((input) => {
-      if (input.type === 'hidden' || input.type === 'submit' || input.type === 'button') return;
-      const hasLabel = input.id && document.querySelector(`label[for="${input.id}"]`);
-      const hasAriaLabel = input.getAttribute('aria-label') || input.getAttribute('aria-labelledby');
-      const wrappedInLabel = input.closest('label');
-      const hasTitle = input.getAttribute('title');
-      if (!hasLabel && !hasAriaLabel && !wrappedInLabel && !hasTitle) inputMissing++;
-    });
-    if (inputMissing > 0) {
-      violations.push({ id: 'label', impact: 'critical', count: inputMissing, description: 'Form inputs missing labels' });
-    }
-
-    // 3. Empty links
-    const links = document.querySelectorAll('a[href]');
-    let emptyLinks = 0;
-    links.forEach((link) => {
-      if (!isVisible(link)) return;
-      const text = (link.textContent || '').trim();
-      const ariaLabel = link.getAttribute('aria-label') || '';
-      const img = link.querySelector('img[alt]');
-      if (!text && !ariaLabel && !img) emptyLinks++;
-    });
-    if (emptyLinks > 0) {
-      violations.push({ id: 'link-name', impact: 'serious', count: emptyLinks, description: 'Links without discernible text' });
-    }
-
-    // 4. Empty buttons
-    const buttons = document.querySelectorAll('button, [role="button"]');
-    let emptyButtons = 0;
-    buttons.forEach((btn) => {
-      if (!isVisible(btn)) return;
-      const text = (btn.textContent || '').trim();
-      const ariaLabel = btn.getAttribute('aria-label') || '';
-      const img = btn.querySelector('img[alt]');
-      if (!text && !ariaLabel && !img) emptyButtons++;
-    });
-    if (emptyButtons > 0) {
-      violations.push({ id: 'button-name', impact: 'critical', count: emptyButtons, description: 'Buttons without discernible text' });
-    }
-
-    // 5. Document language
-    if (!document.documentElement.getAttribute('lang')) {
-      violations.push({ id: 'html-has-lang', impact: 'serious', count: 1, description: 'HTML element missing lang attribute' });
-    }
-
-    // 6. Page title
-    if (!document.title || !document.title.trim()) {
-      violations.push({ id: 'document-title', impact: 'serious', count: 1, description: 'Document missing <title>' });
-    }
-
-    // 7. Heading order
-    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    let prevLevel = 0;
-    let skipCount = 0;
-    headings.forEach((h) => {
-      const level = parseInt(h.tagName[1]);
-      if (prevLevel > 0 && level > prevLevel + 1) skipCount++;
-      prevLevel = level;
-    });
-    if (skipCount > 0) {
-      violations.push({ id: 'heading-order', impact: 'moderate', count: skipCount, description: 'Heading levels skip (not sequential)' });
-    }
-
-    return violations;
-  });
-
-  if (violations.length === 0) {
-    console.log('  No accessibility violations found.');
-  } else {
-    for (const v of violations) {
-      const icon = v.impact === 'critical' ? 'CRITICAL' : v.impact === 'serious' ? 'SERIOUS' : 'MODERATE';
-      console.log(`  [${icon}] ${v.description} (${v.count} instance${v.count > 1 ? 's' : ''})`);
-    }
-  }
-}
-
-// ─── Audit: Color Contrast ────────────────────────────────────────
-
-async function runContrastAudit(page) {
-  const results = await page.evaluate(() => {
-    function getLuminance(r, g, b) {
-      const [rs, gs, bs] = [r, g, b].map((c) => {
-        c = c / 255;
-        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-      });
-      return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
-    }
-
-    function parseColor(color) {
-      const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-      if (m) return { r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) };
-      return null;
-    }
-
-    function contrastRatio(l1, l2) {
-      const lighter = Math.max(l1, l2);
-      const darker = Math.min(l1, l2);
-      return (lighter + 0.05) / (darker + 0.05);
-    }
-
-    function isLargeText(el) {
-      const style = window.getComputedStyle(el);
-      const fontSize = parseFloat(style.fontSize);
-      const fontWeight = parseInt(style.fontWeight) || (style.fontWeight === 'bold' ? 700 : 400);
-      return fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
-    }
-
-    // Get all text nodes' parent elements
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        return node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-      },
-    });
-
-    const checked = new Set();
-    const failures = [];
-    let totalChecked = 0;
-
-    let node;
-    while ((node = walker.nextNode())) {
-      const el = node.parentElement;
-      if (!el || checked.has(el)) continue;
-      checked.add(el);
-
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
-      if (el.offsetWidth === 0 || el.offsetHeight === 0) continue;
-
-      const fg = parseColor(style.color);
-      const bg = parseColor(style.backgroundColor);
-      if (!fg || !bg) continue;
-
-      // Skip transparent backgrounds
-      const bgAlpha = style.backgroundColor.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*([0-9.]+)\)/);
-      if (bgAlpha && parseFloat(bgAlpha[1]) < 0.1) continue;
-
-      totalChecked++;
-
-      const fgLum = getLuminance(fg.r, fg.g, fg.b);
-      const bgLum = getLuminance(bg.r, bg.g, bg.b);
-      const ratio = contrastRatio(fgLum, bgLum);
-
-      const large = isLargeText(el);
-      const required = large ? 3 : 4.5; // AA level
-
-      if (ratio < required) {
-        const text = (el.textContent || '').trim().slice(0, 50);
-        failures.push({
-          text,
-          ratio: Math.round(ratio * 100) / 100,
-          required,
-          fg: style.color,
-          bg: style.backgroundColor,
-          large,
-          selector: el.tagName.toLowerCase() + (el.className ? '.' + String(el.className).split(' ')[0] : ''),
-        });
-      }
-    }
-
-    return { totalChecked, failures: failures.slice(0, 20) }; // Cap at 20 for readability
-  });
-
-  console.log(`  Checked ${results.totalChecked} text elements.`);
-
-  if (results.failures.length === 0) {
-    console.log('  All elements pass AA contrast requirements.');
-  } else {
-    console.log(`  ${results.failures.length} element${results.failures.length > 1 ? 's' : ''} failing contrast (showing up to 20):`);
-    console.log();
-    for (const f of results.failures) {
-      console.log(`    "${f.text.slice(0, 40)}${f.text.length > 40 ? '...' : ''}"`);
-      console.log(`      Ratio: ${f.ratio}:1 (need ${f.required}:1${f.large ? ', large text' : ''})  |  fg: ${f.fg}  bg: ${f.bg}`);
-    }
-  }
-}
-
-// ─── Audit: Breakpoints ──────────────────────────────────────────
-
-async function runBreakpointAudit(page) {
-  const breakpoints = [
-    { label: 'desktop', width: 1280, height: 800 },
-    { label: 'tablet', width: 768, height: 1024 },
-    { label: 'mobile', width: 375, height: 812 },
-  ];
-
-  const originalViewport = page.viewportSize();
-
-  for (const bp of breakpoints) {
-    await page.setViewportSize({ width: bp.width, height: bp.height });
-    await page.waitForTimeout(300);
-
-    // Check for horizontal overflow
-    const overflow = await page.evaluate(() => {
-      return {
-        bodyWidth: document.body.scrollWidth,
-        viewportWidth: window.innerWidth,
-        overflows: document.body.scrollWidth > window.innerWidth,
-      };
-    });
-
-    const overflowStr = overflow.overflows
-      ? `OVERFLOW (body: ${overflow.bodyWidth}px > viewport: ${overflow.viewportWidth}px)`
-      : 'OK';
-
-    console.log(`  ${bp.label} (${bp.width}x${bp.height}): ${overflowStr}`);
-  }
-
-  // Restore original viewport
-  if (originalViewport) {
-    await page.setViewportSize(originalViewport);
-  }
-
-  console.log();
-  console.log('  Note: For full breakpoint screenshots, use the MCP audit_breakpoints tool.');
-}
