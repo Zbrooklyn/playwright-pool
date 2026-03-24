@@ -1,5 +1,5 @@
 {
-  "name": "@anthropic-tools/playwright-pool",
+  "name": "playwright-pool",
   "version": "4.0.0",
   "description": "MCP server and CLI for dynamic Playwright browser pool management with golden profile authentication, 59 MCP tools, 42 CLI commands, and 27 built-in UI audit tools for accessibility, performance, and visual regression testing",
   "type": "module",
