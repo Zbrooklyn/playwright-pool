@@ -857,7 +857,7 @@ async function auditBreakpoints(page, _context, opts) {
 
   for (const bp of breakpoints) {
     await page.setViewportSize({ width: bp.width, height: bp.height });
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(50);
 
     const buffer = await page.screenshot({ fullPage: true });
 
@@ -894,7 +894,7 @@ async function auditOverflow(page, _context, _opts) {
 
   for (const bp of breakpoints) {
     await page.setViewportSize({ width: bp.width, height: bp.height });
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(50);
 
     const data = await page.evaluate(() => {
       const viewportWidth = window.innerWidth;
