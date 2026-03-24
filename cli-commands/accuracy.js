@@ -1009,6 +1009,332 @@ async function runSpacingAudit(page) {
   });
 }
 
+// ─── Scroll Audit ───────────────────────────────────────────────────────
+// Detects fixed/sticky elements covering content and scrollbar layout shift.
+
+async function runScrollAudit(page) {
+  // Measure body width before scroll
+  const widthBefore = await page.evaluate(() => document.body.offsetWidth);
+
+  // Scroll to the bottom of the page
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(300);
+
+  // Measure body width after scroll (scrollbar appearance may shift layout)
+  const widthAfter = await page.evaluate(() => document.body.offsetWidth);
+
+  const issues = [];
+
+  // Check for scrollbar layout shift
+  if (Math.abs(widthBefore - widthAfter) > 1) {
+    issues.push({
+      category: 'visual',
+      id: 'scrollbar-layout-shift',
+      description: `Scrollbar causes layout shift: body width changed from ${widthBefore}px to ${widthAfter}px on scroll`,
+      selector: 'html',
+      severity: 'serious',
+    });
+  }
+
+  // Check for fixed/sticky elements that overlap main content while scrolled
+  const fixedOverlapIssues = await page.evaluate(() => {
+    const results = [];
+    const allElements = document.querySelectorAll('*');
+    const fixedEls = [];
+
+    for (const el of allElements) {
+      const style = window.getComputedStyle(el);
+      if (style.position === 'fixed' || style.position === 'sticky') {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        fixedEls.push({ el, rect, position: style.position });
+      }
+    }
+
+    // Find main content area
+    const mainContent = document.querySelector('main, [role="main"], article, .content, #content, .main, #main');
+    const contentRect = mainContent
+      ? mainContent.getBoundingClientRect()
+      : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+
+    for (const { el, rect, position } of fixedEls) {
+      // Check if fixed element overlaps the content region
+      const overlapsHorizontally = rect.left < contentRect.right && rect.right > contentRect.left;
+      const overlapsVertically = rect.top < contentRect.bottom && rect.bottom > contentRect.top;
+
+      if (overlapsHorizontally && overlapsVertically) {
+        // Calculate overlap area
+        const overlapHeight = Math.min(rect.bottom, contentRect.bottom) - Math.max(rect.top, contentRect.top);
+        const overlapWidth = Math.min(rect.right, contentRect.right) - Math.max(rect.left, contentRect.left);
+        const overlapArea = overlapHeight * overlapWidth;
+        const contentArea = (contentRect.bottom - contentRect.top) * (contentRect.right - contentRect.left);
+        const overlapPercent = contentArea > 0 ? Math.round((overlapArea / contentArea) * 100) : 0;
+
+        // Only flag if overlap is significant (covers more than a trivial portion)
+        if (overlapPercent >= 5 || overlapHeight >= 50) {
+          const selector = el.tagName.toLowerCase() +
+            (el.className ? '.' + String(el.className).split(' ')[0] : '') +
+            (el.id ? '#' + el.id : '');
+          results.push({
+            category: 'visual',
+            id: 'fixed-element-overlap',
+            description: `${position} element "${selector}" covers content when scrolled (${Math.round(rect.height)}px tall, overlaps ~${overlapPercent}% of content area)`,
+            selector,
+            severity: overlapPercent >= 20 ? 'critical' : 'serious',
+          });
+        }
+      }
+    }
+
+    return results;
+  });
+
+  issues.push(...fixedOverlapIssues);
+
+  // Scroll back to top to restore state for subsequent audits
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(200);
+
+  return issues;
+}
+
+// ─── Print Audit ────────────────────────────────────────────────────────
+// Checks if print stylesheet hides main content.
+
+async function runPrintAudit(page) {
+  const issues = [];
+
+  // Emulate print media
+  await page.emulateMedia({ media: 'print' });
+  await page.waitForTimeout(200);
+
+  const printIssues = await page.evaluate(() => {
+    const results = [];
+
+    // Check if main content containers are hidden
+    const contentSelectors = [
+      'main', '[role="main"]', 'article', '.content', '#content',
+      '.main', '#main', '.page', '#page', '.wrapper', '#wrapper',
+      'body > div', 'body > section',
+    ];
+
+    let mainContentHidden = false;
+    let hiddenSelector = '';
+
+    for (const sel of contentSelectors) {
+      const els = document.querySelectorAll(sel);
+      for (const el of els) {
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          mainContentHidden = true;
+          hiddenSelector = sel + (el.className ? '.' + String(el.className).split(' ')[0] : '');
+          break;
+        }
+      }
+      if (mainContentHidden) break;
+    }
+
+    if (mainContentHidden) {
+      results.push({
+        category: 'print',
+        id: 'print-content-hidden',
+        description: `Print stylesheet hides main content (${hiddenSelector} has display:none or visibility:hidden)`,
+        selector: hiddenSelector,
+        severity: 'critical',
+      });
+    }
+
+    // Check if body itself is hidden
+    const bodyStyle = window.getComputedStyle(document.body);
+    if (bodyStyle.display === 'none' || bodyStyle.visibility === 'hidden') {
+      results.push({
+        category: 'print',
+        id: 'print-body-hidden',
+        description: 'Print stylesheet hides the entire body',
+        selector: 'body',
+        severity: 'critical',
+      });
+    }
+
+    // Check how many visible text elements remain
+    const textEls = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, span, a');
+    let visibleTextCount = 0;
+    let totalTextCount = 0;
+    for (const el of textEls) {
+      const text = (el.textContent || '').trim();
+      if (!text) continue;
+      totalTextCount++;
+      const style = window.getComputedStyle(el);
+      if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+        visibleTextCount++;
+      }
+    }
+
+    if (totalTextCount > 0 && visibleTextCount === 0) {
+      results.push({
+        category: 'print',
+        id: 'print-all-text-hidden',
+        description: `Print stylesheet hides all text content (0 of ${totalTextCount} text elements visible)`,
+        selector: 'body',
+        severity: 'critical',
+      });
+    } else if (totalTextCount > 5 && visibleTextCount < totalTextCount * 0.3) {
+      results.push({
+        category: 'print',
+        id: 'print-most-text-hidden',
+        description: `Print stylesheet hides most text content (${visibleTextCount} of ${totalTextCount} text elements visible)`,
+        selector: 'body',
+        severity: 'serious',
+      });
+    }
+
+    return results;
+  });
+
+  issues.push(...printIssues);
+
+  // Restore screen media
+  await page.emulateMedia({ media: 'screen' });
+  await page.waitForTimeout(100);
+
+  return issues;
+}
+
+// ─── Interaction Audit ──────────────────────────────────────────────────
+// Checks for auto-playing animations without reduced-motion support and
+// user-select: none on text content.
+
+async function runInteractionAudit(page) {
+  return page.evaluate(() => {
+    const issues = [];
+
+    // --- Auto-playing CSS animations ---
+    // Find elements with animation that run automatically (not triggered by hover/focus)
+    const allElements = document.querySelectorAll('*');
+    const animatedEls = [];
+
+    for (const el of allElements) {
+      const style = window.getComputedStyle(el);
+      const animName = style.animationName;
+      const animDuration = parseFloat(style.animationDuration);
+      const animPlayState = style.animationPlayState;
+
+      if (animName && animName !== 'none' && animDuration > 0 && animPlayState !== 'paused') {
+        animatedEls.push({ el, animName, animDuration });
+      }
+    }
+
+    if (animatedEls.length > 0) {
+      // Check if the page has a prefers-reduced-motion media query
+      let hasReducedMotionSupport = false;
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules || []) {
+            if (rule instanceof CSSMediaRule &&
+                rule.conditionText &&
+                rule.conditionText.includes('prefers-reduced-motion')) {
+              hasReducedMotionSupport = true;
+              break;
+            }
+          }
+        } catch (e) {
+          // Cross-origin stylesheet, skip
+        }
+        if (hasReducedMotionSupport) break;
+      }
+
+      for (const { el, animName, animDuration } of animatedEls) {
+        const selector = el.tagName.toLowerCase() +
+          (el.className ? '.' + String(el.className).split(' ')[0] : '') +
+          (el.id ? '#' + el.id : '');
+
+        // Check if this specific animation has iteration count > 1 or infinite
+        const style = window.getComputedStyle(el);
+        const iterCount = style.animationIterationCount;
+        const isLooping = iterCount === 'infinite' || parseFloat(iterCount) > 1;
+
+        if (isLooping) {
+          issues.push({
+            category: 'accessibility',
+            id: 'auto-animation-looping',
+            description: `Auto-playing CSS animation "${animName}" loops on ${selector} (${iterCount} iterations, ${animDuration}s duration)`,
+            selector,
+            severity: 'serious',
+          });
+        }
+
+        if (!hasReducedMotionSupport) {
+          issues.push({
+            category: 'accessibility',
+            id: 'no-reduced-motion',
+            description: `Page has CSS animations but no prefers-reduced-motion media query support (animation "${animName}" on ${selector})`,
+            selector,
+            severity: 'serious',
+          });
+          // Only report once per page
+          break;
+        }
+      }
+
+      // Check for animations that cannot be paused by the user
+      for (const { el, animName } of animatedEls) {
+        const style = window.getComputedStyle(el);
+        const iterCount = style.animationIterationCount;
+        if (iterCount === 'infinite') {
+          // Check if there's a pause button nearby (heuristic)
+          const parent = el.closest('section, div, article') || el.parentElement;
+          const pauseBtn = parent?.querySelector('button[aria-label*="pause"], button[aria-label*="stop"], .pause, .stop, [data-pause]');
+          if (!pauseBtn) {
+            const selector = el.tagName.toLowerCase() +
+              (el.className ? '.' + String(el.className).split(' ')[0] : '') +
+              (el.id ? '#' + el.id : '');
+            issues.push({
+              category: 'accessibility',
+              id: 'animation-no-pause',
+              description: `Infinite CSS animation "${animName}" on ${selector} has no visible pause control`,
+              selector,
+              severity: 'serious',
+            });
+          }
+        }
+      }
+    }
+
+    // --- user-select: none on text content ---
+    const textContentSelectors = 'p, td, th, li, span, div, article, section, main, h1, h2, h3, h4, h5, h6, blockquote, figcaption, label, dd, dt';
+    const textElements = document.querySelectorAll(textContentSelectors);
+
+    for (const el of textElements) {
+      const style = window.getComputedStyle(el);
+      if (style.userSelect === 'none' || style.webkitUserSelect === 'none') {
+        // Only flag if element has meaningful text content
+        const text = (el.textContent || '').trim();
+        if (text.length < 5) continue;
+
+        // Skip if it's an interactive element (button-like) where user-select: none is expected
+        const role = el.getAttribute('role');
+        if (role === 'button' || role === 'tab' || role === 'menuitem') continue;
+        if (el.closest('button, [role="button"], nav, .nav, .navbar, .toolbar')) continue;
+
+        const selector = el.tagName.toLowerCase() +
+          (el.className ? '.' + String(el.className).split(' ')[0] : '') +
+          (el.id ? '#' + el.id : '');
+
+        issues.push({
+          category: 'accessibility',
+          id: 'user-select-none',
+          description: `user-select: none on text content: "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}" (${selector})`,
+          selector,
+          severity: 'serious',
+        });
+      }
+    }
+
+    return issues;
+  });
+}
+
 // ─── Scoring Engine ─────────────────────────────────────────────────────
 
 function scoreFindingsAgainstBugs(findings, knownBugs) {
