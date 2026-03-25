@@ -73,26 +73,48 @@ function parseAudits(flags) {
 
 // Click an element by text or CSS selector, then wait for settle
 async function clickAndSettle(page, selector) {
-  // Try text-based click first, fall back to CSS selector
+  // Strip text= prefix if present (both formats work)
+  const cleanSelector = selector.startsWith('text=') ? selector.slice(5) : selector;
+
   try {
-    const textLocator = page.getByText(selector, { exact: false });
-    if (await textLocator.count() > 0) {
-      await textLocator.first().click();
-    } else {
-      await page.click(selector);
+    // Try multiple strategies to find the element
+    const strategies = [
+      () => page.getByRole('button', { name: cleanSelector }),
+      () => page.getByRole('link', { name: cleanSelector }),
+      () => page.getByText(cleanSelector, { exact: false }),
+      () => page.locator(selector),
+    ];
+
+    let clicked = false;
+    for (const strategy of strategies) {
+      try {
+        const locator = strategy();
+        if (await locator.count() > 0) {
+          // Click with navigation handling — some clicks trigger page loads
+          await Promise.all([
+            page.waitForLoadState('domcontentloaded').catch(() => {}),
+            locator.first().click({ timeout: 10000 }),
+          ]);
+          clicked = true;
+          break;
+        }
+      } catch {
+        continue;
+      }
     }
-  } catch {
-    // If getByText fails, try as CSS selector
-    try {
-      await page.click(selector);
-    } catch (err) {
-      console.error(`  Failed to click "${selector}": ${err.message}`);
+
+    if (!clicked) {
+      console.error(`  Could not find element: "${selector}"`);
       return;
     }
+  } catch (err) {
+    console.error(`  Failed to click "${selector}": ${err.message}`);
+    return;
   }
-  // Wait for page to settle after click
-  await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await page.waitForTimeout(1000);
+
+  // Wait for page to settle (handles OAuth redirects, SPA navigation, etc.)
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(500);
 }
 
 // ─── Inline audit logic (self-contained, no imports from audit.js) ──────────
