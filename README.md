@@ -141,7 +141,7 @@ Add to your `.mcp.json`:
 
 </details>
 
-Restart Claude Code (or your MCP client). The `playwright-pool` server is now available with all 59 tools.
+Restart Claude Code (or your MCP client). The `playwright-pool` server is now available with all 75 tools.
 
 ---
 
@@ -166,7 +166,7 @@ Restart Claude Code (or your MCP client). The `playwright-pool` server is now av
 - PDF export, screenshot capture, accessibility snapshots
 - Tracing (start/stop) for performance debugging
 
-### UI auditing (27 built-in audit tools)
+### UI auditing (28 built-in audit tools)
 - **Accessibility** -- WCAG 2.1 violations via axe-core, grouped by severity
 - **Color contrast** -- text/background ratio checking against AA/AAA standards
 - **Responsive breakpoints** -- screenshot all viewports in one command
@@ -197,7 +197,7 @@ Restart Claude Code (or your MCP client). The `playwright-pool` server is now av
 
 ---
 
-## MCP Tools (59 total)
+## MCP Tools (75 total)
 
 ### Pool management (4 tools)
 
@@ -246,7 +246,7 @@ Restart Claude Code (or your MCP client). The `playwright-pool` server is now av
 | `browser_install` | Install Chromium binary |
 | `browser_close` | Close browser |
 
-### Audit tools (22 MCP tools)
+### Audit tools (28 MCP tools)
 
 | Tool | What it checks |
 |:-----|:---------------|
@@ -272,6 +272,29 @@ Restart Claude Code (or your MCP client). The `playwright-pool` server is now av
 | `audit_form_validation` | Form submission state testing |
 | `audit_print_layout` | Print media emulation |
 | `audit_scroll_behavior` | Sticky, parallax, scroll audit |
+| `audit_element_overlap` | Visual collision detection across breakpoints |
+| `audit_security_headers` | CSP, HSTS, X-Frame-Options analysis |
+| `audit_mixed_content` | HTTP resources on HTTPS pages |
+| `audit_third_party_scripts` | External script inventory and risk assessment |
+| `audit_cookie_compliance` | GDPR/CCPA cookie classification |
+| `audit_lighthouse` | Aggregated performance/a11y/SEO/best-practices scoring |
+
+### Utility tools (2 MCP tools)
+
+| Tool | Description |
+|:-----|:------------|
+| `snapshot_compact` | Interactive elements only — 90% fewer tokens than `browser_snapshot` |
+| `browser_mouse_wheel` | Scroll mouse wheel (horizontal and vertical) |
+
+### Storage tools (5 MCP tools)
+
+| Tool | Description |
+|:-----|:------------|
+| `browser_cookies_get` | Get cookies for current page |
+| `browser_cookies_set` | Set a cookie with name, value, domain, path, expiry |
+| `browser_cookies_clear` | Clear all cookies |
+| `browser_storage_get` | Get localStorage/sessionStorage values |
+| `browser_storage_set` | Set localStorage/sessionStorage values |
 
 ---
 
@@ -330,7 +353,7 @@ playwright-pool mouse drag        # Drag to coordinates
 playwright-pool trace start       # Start recording
 playwright-pool trace stop        # Stop and save trace
 
-# Auditing (27 audit types)
+# Auditing (28 audit types)
 playwright-pool audit <url>                    # Run all audits
 playwright-pool audit <url> --type=accessibility
 playwright-pool audit <url> --type=color-contrast
@@ -454,11 +477,11 @@ Works on **Windows**, **macOS**, and **Linux**.
 
 ### What is an MCP server?
 
-MCP (Model Context Protocol) is the open standard that lets AI coding assistants like Claude Code, Cursor, Windsurf, and Cline interact with external tools. An MCP server exposes tools that the AI can call. Playwright Pool is an MCP server that exposes 59 browser automation and UI auditing tools.
+MCP (Model Context Protocol) is the open standard that lets AI coding assistants like Claude Code, Cursor, Windsurf, and Cline interact with external tools. An MCP server exposes tools that the AI can call. Playwright Pool is an MCP server that exposes 75 browser automation and UI auditing tools.
 
 ### How is this different from @playwright/mcp?
 
-The official `@playwright/mcp` gives you a single browser instance per config entry with no authentication sharing, no audit tools, and no session isolation. Playwright Pool gives you a dynamic pool of authenticated browsers with 27 built-in audit tools, all from a single config entry.
+The official `@playwright/mcp` gives you a single browser instance per config entry with no authentication sharing, no audit tools, and no session isolation. Playwright Pool gives you a dynamic pool of authenticated browsers with 28 built-in audit tools, all from a single config entry.
 
 ### Does this work with Claude Code?
 
