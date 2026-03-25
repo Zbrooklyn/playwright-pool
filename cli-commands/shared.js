@@ -107,6 +107,30 @@ export async function connectToActiveBrowser() {
   }
 }
 
+// Try to connect to a persistent browser (from `browser launch`), else launch fresh.
+// Quick ops don't need auth overlay — they launch a bare browser for speed.
+export async function getOrLaunchBrowser(flags = {}) {
+  // Try reusing a persistent browser (started via `browser launch`)
+  const state = loadState();
+  if (state && state.wsEndpoint) {
+    try {
+      const browser = await chromium.connectOverCDP(state.wsEndpoint);
+      const contexts = browser.contexts();
+      if (contexts.length > 0) {
+        const context = contexts[0];
+        const page = await context.newPage();
+        const viewport = getViewport(flags);
+        await page.setViewportSize(viewport);
+        return { browser, context, page, reused: true };
+      }
+    } catch {
+      clearState();
+    }
+  }
+  // No persistent browser — launch standalone (fast, no auth overlay)
+  return { ...await launchStandalone(flags), reused: false };
+}
+
 // Launch a standalone browser (for quick ops — self-contained lifecycle)
 export async function launchStandalone(flags = {}) {
   const viewport = getViewport(flags);

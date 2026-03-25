@@ -1,16 +1,21 @@
 // cli-commands/quick.js — standalone quick operations
 import path from 'path';
-import { parseArgs, getViewport, timestamp, ensureDir, launchStandalone, DEVICES } from './shared.js';
+import { parseArgs, getViewport, timestamp, ensureDir, getOrLaunchBrowser, launchStandalone, DEVICES } from './shared.js';
 
 export async function handleQuick(command, args) {
-  switch (command) {
-    case 'screenshot': return cmdScreenshot(args);
-    case 'snap':       return cmdSnap(args);
-    case 'eval':       return cmdEval(args);
-    case 'pdf':        return cmdPdf(args);
-    default:
-      console.error(`Unknown quick command: ${command}`);
-      process.exit(1);
+  try {
+    switch (command) {
+      case 'screenshot': await cmdScreenshot(args); break;
+      case 'snap':       await cmdSnap(args); break;
+      case 'eval':       await cmdEval(args); break;
+      case 'pdf':        await cmdPdf(args); break;
+      default:
+        console.error(`Unknown quick command: ${command}`);
+        process.exit(1);
+    }
+  } finally {
+    // Force exit — CDP connections can keep the event loop alive
+    process.exit(0);
   }
 }
 
@@ -32,7 +37,7 @@ async function cmdScreenshot(args) {
     const saved = [];
 
     for (const [label, viewport] of Object.entries(DEVICES)) {
-      const { browser, page } = await launchStandalone({ ...flags, mobile: false, tablet: false });
+      const { browser, page, reused } = await getOrLaunchBrowser({ ...flags, mobile: false, tablet: false });
       await page.setViewportSize(viewport);
       await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() =>
         page.goto(url, { waitUntil: 'load', timeout: 30000 })
@@ -41,22 +46,20 @@ async function cmdScreenshot(args) {
       await page.screenshot({ path: filename, fullPage });
       saved.push(filename);
       console.log(`Saved: ${filename}  (${viewport.width}x${viewport.height})`);
-      await browser.close();
+      if (reused) { await page.close().catch(() => {}); browser.disconnect(); } else { await browser.close(); }
     }
 
     return saved;
   }
 
   // Single viewport screenshot
-  const { browser, page } = await launchStandalone(flags);
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() =>
-    page.goto(url, { waitUntil: 'load', timeout: 30000 })
-  );
+  const { browser, page, reused } = await getOrLaunchBrowser(flags);
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
   const filename = positional[1] || `screenshot-${timestamp()}.png`;
   await page.screenshot({ path: filename, fullPage });
   console.log(`Saved: ${filename}`);
-  await browser.close();
+  if (reused) { await page.close().catch(() => {}); browser.disconnect(); } else { await browser.close(); }
   return filename;
 }
 
@@ -70,10 +73,8 @@ async function cmdSnap(args) {
     process.exit(1);
   }
 
-  const { browser, page } = await launchStandalone(flags);
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() =>
-    page.goto(url, { waitUntil: 'load', timeout: 30000 })
-  );
+  const { browser, page, reused } = await getOrLaunchBrowser(flags);
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
   const compactMode = !!flags.compact;
 
@@ -92,7 +93,7 @@ async function cmdSnap(args) {
     const fs = await import('fs');
     fs.writeFileSync(filename, output);
     console.log(`Saved: ${filename}  (compact interactive snapshot)`);
-    await browser.close();
+    if (reused) { await page.close().catch(() => {}); browser.disconnect(); } else { await browser.close(); }
     return filename;
   }
 
@@ -183,7 +184,7 @@ async function cmdSnap(args) {
   const fs = await import('fs');
   fs.writeFileSync(filename, markdown);
   console.log(`Saved: ${filename}  (${elements.length} elements)`);
-  await browser.close();
+  if (reused) { await page.close().catch(() => {}); browser.disconnect(); } else { await browser.close(); }
   return filename;
 }
 
@@ -376,14 +377,12 @@ async function cmdEval(args) {
     process.exit(1);
   }
 
-  const { browser, page } = await launchStandalone(flags);
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() =>
-    page.goto(url, { waitUntil: 'load', timeout: 30000 })
-  );
+  const { browser, page, reused } = await getOrLaunchBrowser(flags);
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
   const result = await page.evaluate(expression);
   console.log(JSON.stringify(result, null, 2));
-  await browser.close();
+  if (reused) { await page.close().catch(() => {}); browser.disconnect(); } else { await browser.close(); }
   return result;
 }
 
@@ -399,14 +398,12 @@ async function cmdPdf(args) {
 
   // PDF generation requires headless mode (Chromium limitation)
   const pdfFlags = { ...flags, headed: false, mobile: false, tablet: false };
-  const { browser, page } = await launchStandalone(pdfFlags);
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() =>
-    page.goto(url, { waitUntil: 'load', timeout: 30000 })
-  );
+  const { browser, page, reused } = await getOrLaunchBrowser(pdfFlags);
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
   const filename = positional[1] || `page-${timestamp()}.pdf`;
   await page.pdf({ path: filename });
   console.log(`Saved: ${filename}`);
-  await browser.close();
+  if (reused) { await page.close().catch(() => {}); browser.disconnect(); } else { await browser.close(); }
   return filename;
 }
