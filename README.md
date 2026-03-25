@@ -445,6 +445,33 @@ Run WCAG 2.1 audits with axe-core integration, check focus order, validate tap t
 
 ---
 
+## Performance
+
+### Speed comparison (eval -- navigate to page, get title)
+
+| Tool | Headless | Headed |
+|:-----|:--------:|:------:|
+| playwright-pool CLI | 1.2s | 1.7s |
+| @playwright/mcp (raw Playwright) | 1.2s | 1.8s |
+| agent-browser | N/A | 0.6s |
+
+### Token usage comparison (GitHub repo page -- complex)
+
+| Approach | Tokens |
+|:---------|:------:|
+| MCP `browser_navigate` (full snapshot) | ~28,000 tokens (112KB) |
+| MCP `snapshot_compact` | ~1,375 tokens (5.5KB) |
+| CLI screenshot (file path only) | ~20 tokens |
+| CLI snap (file path only) | ~20 tokens |
+
+### When to use what
+
+- **MCP** -- interactive work: clicking, navigating, reacting to page state. Use `snapshot_compact` instead of `browser_snapshot` for 20x fewer tokens.
+- **CLI** -- audits, screenshots, bulk operations. One command, minimal context tokens.
+- **`snapshot_compact`** -- always prefer over `browser_snapshot` unless you need the full DOM tree.
+
+---
+
 ## Configuration
 
 | Environment Variable | Default | Description |

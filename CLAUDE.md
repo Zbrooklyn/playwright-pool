@@ -30,6 +30,12 @@ The rendered UI is the source of truth, not the source code. All audit tools mus
 
 Code saying `padding: 16px` means nothing if a conflicting style makes the visual result wrong. When building audit tools, always verify against the rendered output, not just the DOM/CSS.
 
+## Performance Guidelines
+- Prefer CLI for audits and screenshots — saves context tokens (~20 tokens for a file path vs ~28,000 for a full snapshot)
+- Use MCP for interactive browser sessions (clicking, navigating, reacting to page state)
+- Always use `snapshot_compact` over `browser_snapshot` — 20x fewer tokens (~1,375 vs ~28,000)
+- First `pool_launch` has ~17s overhead (template creation); subsequent operations are fast (<2s)
+
 ## Architecture Decisions
 - **Auth overlay, not full profile copy** — copying entire Chromium profiles causes crashes due to cache/GPU data tied to specific Chromium builds. We create a fresh profile and overlay only the 13 auth-critical files.
 - **Template caching** — the first `pool_launch` creates a template profile (one headless Chromium launch). Subsequent launches just copy the template (filesystem only, no Chromium launch).

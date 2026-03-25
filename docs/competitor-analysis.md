@@ -183,6 +183,36 @@ This is where playwright-pool differentiates most dramatically. No other MCP bro
 
 ---
 
+## I. Benchmark Results (Measured)
+
+### Speed comparison (eval -- navigate to page, get title)
+
+| Tool | Headless | Headed |
+|:-----|:--------:|:------:|
+| playwright-pool CLI | 1.2s | 1.7s |
+| @playwright/mcp (raw Playwright) | 1.2s | 1.8s |
+| agent-browser | N/A | 0.6s |
+
+**Takeaway:** playwright-pool adds zero overhead vs raw Playwright. agent-browser is faster for headed mode because it reuses an already-running Chrome instance (no cold-start), but does not support headless mode.
+
+### Token usage comparison (GitHub repo page -- complex)
+
+| Approach | Tokens |
+|:---------|:------:|
+| MCP `browser_navigate` (full snapshot) | ~28,000 tokens (112KB) |
+| MCP `snapshot_compact` | ~1,375 tokens (5.5KB) |
+| CLI screenshot (file path only) | ~20 tokens |
+| CLI snap (file path only) | ~20 tokens |
+
+**Takeaway:** `snapshot_compact` delivers a 20x token reduction vs full accessibility snapshots. CLI commands return only file paths, using virtually zero context window. For audit workflows and bulk operations, CLI is the most token-efficient approach.
+
+### Cold start overhead
+
+- First `pool_launch` per session: ~17s (creates cached template profile with one headless Chromium launch)
+- Subsequent `pool_launch`: <2s (filesystem copy only, no Chromium startup)
+
+---
+
 ## Strategic Analysis
 
 ### 1. Where playwright-pool wins -- features no competitor has

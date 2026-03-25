@@ -26,6 +26,38 @@
 
 ---
 
+## Benchmark Results
+
+### Speed comparison (eval -- navigate to page, get title)
+
+| Tool | Headless | Headed |
+|:-----|:--------:|:------:|
+| playwright-pool CLI | 1.2s | 1.7s |
+| @playwright/mcp (raw Playwright) | 1.2s | 1.8s |
+| agent-browser | N/A | 0.6s |
+
+playwright-pool adds zero overhead vs raw Playwright. agent-browser is faster for headed navigation because it reuses an already-running Chrome instance.
+
+### Token usage comparison (GitHub repo page -- complex)
+
+| Approach | Tokens |
+|:---------|:------:|
+| MCP `browser_navigate` (full snapshot) | ~28,000 tokens (112KB) |
+| MCP `snapshot_compact` | ~1,375 tokens (5.5KB) |
+| CLI screenshot (file path only) | ~20 tokens |
+| CLI snap (file path only) | ~20 tokens |
+
+`snapshot_compact` uses 20x fewer tokens than a full `browser_snapshot`. CLI commands return only a file path, using virtually zero context tokens.
+
+### Recommendations
+
+- **MCP** -- interactive work: clicking, navigating, reacting to page state. Use `snapshot_compact` instead of `browser_snapshot` for 20x fewer tokens.
+- **CLI** -- audits, screenshots, bulk operations. One command, minimal context tokens.
+- **`snapshot_compact`** -- always prefer over `browser_snapshot` unless you need the full DOM tree.
+- First `pool_launch` has ~17s overhead (template creation). Subsequent operations are fast.
+
+---
+
 ## Next: Scenario Coverage Expansion
 
 Currently covering ~50 of 210 documented browser audit scenarios. Priority expansion areas:

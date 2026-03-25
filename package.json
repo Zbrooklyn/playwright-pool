@@ -1,6 +1,6 @@
 {
   "name": "playwright-pool",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "MCP server and CLI for dynamic Playwright browser pool management with golden profile authentication, 75 MCP tools, 42 CLI commands, 28 built-in UI audit tools, 143 device presets, and compact snapshots for accessibility, performance, and visual regression testing",
   "type": "module",
   "bin": {
