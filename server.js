@@ -155,6 +155,11 @@ async function createBackendForContext(browserContext) {
     },
     capabilities: ['core-install', 'core-tabs', 'internal', 'pdf', 'testing', 'tracing', 'vision'],
     allowUnrestrictedFileAccess: true,
+    // Optimize MCP response size for token efficiency:
+    // - incremental snapshots show only changes (not full tree every time)
+    // - codegen: 'none' removes "Ran Playwright code" section from responses
+    snapshot: { mode: 'incremental' },
+    codegen: 'none',
   });
 
   const factory = {
