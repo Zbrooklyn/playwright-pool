@@ -366,6 +366,24 @@ const utilityToolSchemas = [
     }),
     type: 'readOnly',
   },
+  {
+    name: 'workflow_audit_page',
+    title: 'Complete page audit workflow',
+    description:
+      'Complete page audit workflow in one call: navigate, click through steps, screenshot at 3 breakpoints, run 6 audits. Returns compact summary. Much faster than individual tool calls.',
+    inputSchema: mcpBundle.z.object({
+      url: mcpBundle.z.string().describe('URL to audit'),
+      clicks: mcpBundle.z.array(mcpBundle.z.string()).optional().describe('Sequence of elements to click before auditing (text or CSS selectors)'),
+      breakpoints: mcpBundle.z.array(mcpBundle.z.object({
+        width: mcpBundle.z.number(),
+        height: mcpBundle.z.number(),
+        label: mcpBundle.z.string(),
+      })).optional().describe('Breakpoints to screenshot at (default: desktop 1280x800, tablet 768x1024, mobile 375x812)'),
+      audits: mcpBundle.z.array(mcpBundle.z.string()).optional().describe('Audit types to run (default: meta, accessibility, contrast, overflow, tap_targets, images)'),
+      savePath: mcpBundle.z.string().optional().describe('Directory to save screenshots and report'),
+    }),
+    type: 'readOnly',
+  },
 ];
 
 // --- Custom browser tool definitions (not in upstream @playwright/mcp) ---
@@ -1939,6 +1957,157 @@ async function handleSnapshotCompact(params) {
   return { content: [{ type: 'text', text: output }] };
 }
 
+// --- Workflow tool handler (workflow_audit_page via MCP) ---
+
+async function handleWorkflowAuditPage(params) {
+  const { workflowAuditPage: runWorkflow, AUDIT_MAP, clickAndSettle } = await import('./cli-commands/workflow.js');
+
+  // Use the active pool page if available, otherwise launch standalone
+  let page, browser, standalone = false;
+  if (activeId && poolEntries.has(activeId)) {
+    const entry = poolEntries.get(activeId);
+    const ctx = entry.browserContext;
+    if (ctx) {
+      const pages = ctx.pages();
+      page = pages[pages.length - 1] || await ctx.newPage();
+    }
+  }
+
+  if (!page) {
+    // Launch a standalone browser for the workflow
+    const { chromium: pw } = await import('playwright');
+    browser = await pw.launch({ headless: true });
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    page = await context.newPage();
+    standalone = true;
+  }
+
+  const url = params.url;
+  const clicks = params.clicks || [];
+  const breakpoints = params.breakpoints || [
+    { label: 'desktop', width: 1280, height: 800 },
+    { label: 'tablet', width: 768, height: 1024 },
+    { label: 'mobile', width: 375, height: 812 },
+  ];
+  const auditNames = params.audits || ['meta', 'accessibility', 'contrast', 'overflow', 'tap_targets', 'images'];
+  const saveDir = params.savePath || null;
+  const startTime = Date.now();
+
+  try {
+    // Navigate
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(500);
+
+    // Click steps
+    for (const selector of clicks) {
+      await clickAndSettle(page, selector);
+    }
+
+    // Screenshots at breakpoints
+    const screenshots = [];
+    for (const bp of breakpoints) {
+      await page.setViewportSize({ width: bp.width, height: bp.height });
+      await page.waitForTimeout(300);
+      const buffer = await page.screenshot({ fullPage: true });
+      if (saveDir) {
+        const fs = await import('fs');
+        const path = await import('path');
+        if (!fs.existsSync(saveDir)) fs.mkdirSync(saveDir, { recursive: true });
+        const filepath = path.join(saveDir, `${bp.label}-${bp.width}x${bp.height}.png`);
+        fs.writeFileSync(filepath, buffer);
+        screenshots.push({ label: bp.label, path: filepath });
+      } else {
+        screenshots.push({ label: bp.label, size: buffer.length });
+      }
+    }
+
+    // Run audits
+    const auditResults = [];
+    let totalIssues = 0;
+    for (const auditName of auditNames) {
+      const auditFn = AUDIT_MAP[auditName];
+      if (!auditFn) continue;
+      let result;
+      if (auditName === 'overflow') {
+        result = await auditFn(page, breakpoints);
+      } else {
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.waitForTimeout(200);
+        result = await auditFn(page);
+      }
+      auditResults.push(result);
+      totalIssues += result.total;
+    }
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    // Build compact summary
+    const lines = [];
+    lines.push(`Workflow: audit-page`);
+    lines.push(`URL: ${url}`);
+    const steps = ['navigate'];
+    clicks.forEach(c => steps.push(`click "${c}"`));
+    steps.push(`screenshot × ${breakpoints.length}`);
+    steps.push(`audit × ${auditNames.length}`);
+    lines.push(`Steps: ${steps.join(' → ')}`);
+    lines.push('');
+
+    if (saveDir) {
+      lines.push('Screenshots saved:');
+      for (const s of screenshots) lines.push(`  ${s.path}`);
+    } else {
+      lines.push('Screenshots captured:');
+      for (const s of screenshots) lines.push(`  ${s.label} (${s.size} bytes)`);
+    }
+    lines.push('');
+
+    lines.push('Audit Summary:');
+    for (const result of auditResults) {
+      if (result.total === 0) {
+        lines.push(`  ${result.name}: PASS`);
+      } else {
+        const parts = [];
+        if (result.critical) parts.push(`${result.critical} critical`);
+        if (result.warnings) parts.push(`${result.warnings} warnings`);
+        lines.push(`  ${result.name}: ${result.total} issues${parts.length ? ' (' + parts.join(', ') + ')' : ''}`);
+        for (const issue of result.issues.slice(0, 3)) {
+          lines.push(`    • ${issue}`);
+        }
+        if (result.issues.length > 3) {
+          lines.push(`    ... and ${result.issues.length - 3} more`);
+        }
+      }
+    }
+    lines.push('');
+    lines.push(`Total: ${totalIssues} issues | Time: ${elapsed}s`);
+
+    // Save report if savePath provided
+    if (saveDir) {
+      const fs = await import('fs');
+      const pathMod = await import('path');
+      const report = {
+        workflow: 'audit-page',
+        url,
+        timestamp: new Date().toISOString(),
+        clicks,
+        screenshots: screenshots.map(s => s.path),
+        audits: auditResults,
+        totalIssues,
+        elapsed: `${elapsed}s`,
+      };
+      const reportPath = pathMod.join(saveDir, 'audit-report.json');
+      fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+      lines.push(`Full report: ${reportPath}`);
+    }
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  } finally {
+    if (standalone && browser) {
+      await browser.close().catch(() => {});
+    }
+  }
+}
+
 // --- Pool tool handlers ---
 
 async function handlePoolLaunch(params) {
@@ -2363,12 +2532,22 @@ class PoolCompositeBackend {
       }
     }
 
-    // Utility tools (snapshot_compact, etc.)
+    // Utility tools (snapshot_compact, workflow_audit_page, etc.)
     if (name === 'snapshot_compact') {
       const schema = utilityToolSchemas.find(s => s.name === name);
       const parsed = schema.inputSchema.parse(rawArguments || {});
       try {
         return await handleSnapshotCompact(parsed);
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Error in ${name}: ${error.message}` }], isError: true };
+      }
+    }
+
+    if (name === 'workflow_audit_page') {
+      const schema = utilityToolSchemas.find(s => s.name === name);
+      const parsed = schema.inputSchema.parse(rawArguments || {});
+      try {
+        return await handleWorkflowAuditPage(parsed);
       } catch (error) {
         return { content: [{ type: 'text', text: `Error in ${name}: ${error.message}` }], isError: true };
       }

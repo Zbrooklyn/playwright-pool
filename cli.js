@@ -5,6 +5,7 @@
 // Setup (inline):  init, login, config, status, clean
 // Browser:         browser launch/navigate/click/type/... → ./cli-commands/browser.js
 // Quick:           screenshot, snap, eval, pdf            → ./cli-commands/quick.js
+// Workflow:        workflow audit-page/compare/monitor     → ./cli-commands/workflow.js
 // Audit:           audit <url>, audit list, audit diff     → ./cli-commands/audit.js
 // Inspect:         console, network, run, wait, verify, locator → ./cli-commands/inspect.js
 // Mouse:           mouse move/click/drag                  → ./cli-commands/mouse.js
@@ -77,6 +78,13 @@ switch (command) {
   case 'pdf': {
     const { handleQuick } = await import('./cli-commands/quick.js');
     await handleQuick(command, args.slice(1));
+    break;
+  }
+
+  // ── Workflow (standalone — batched multi-step operations) ───────
+  case 'workflow': {
+    const { handleWorkflow } = await import('./cli-commands/workflow.js');
+    await handleWorkflow(args.slice(1));
     break;
   }
 
@@ -199,6 +207,11 @@ Quick Operations (standalone):
   snap <url>        Get accessibility snapshot (--interactive)
   eval <url> <expr> Evaluate JavaScript expression
   pdf <url>         Save page as PDF
+
+Workflow (standalone — batched multi-step):
+  workflow audit-page <url>       Navigate, screenshot × 3, audit × 6 in one process
+  workflow compare <a> <b>        Compare two URLs side-by-side at 3 breakpoints
+  workflow monitor <url>          Audit and compare against a baseline
 
 Audit (standalone):
   audit <url>       Run audit suite (--only, --skip, --category, --json)
