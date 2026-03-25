@@ -9,7 +9,7 @@
 [![MCP Protocol](https://img.shields.io/badge/MCP-Compatible-purple)](https://modelcontextprotocol.io/)
 [![Playwright](https://img.shields.io/badge/Playwright-1.58%2B-orange)](https://playwright.dev/)
 
-[Getting Started](#getting-started) | [MCP Tools](#mcp-tools-59-total) | [CLI Commands](#cli-42-commands) | [Audit Tools](#audit-tools-27-built-in-audits) | [Why Playwright Pool?](#why-playwright-pool)
+[Getting Started](#getting-started) | [MCP Tools](#mcp-tools-75-total) | [CLI Commands](#cli-42-commands) | [Audit Tools](#audit-tools-28-built-in-audits) | [Why Playwright Pool?](#why-playwright-pool)
 
 </div>
 
@@ -19,13 +19,15 @@
 
 Playwright Pool is an MCP (Model Context Protocol) server and CLI that gives AI coding assistants like **Claude Code**, **Cursor**, **Windsurf**, and **Cline** a dynamically managed pool of authenticated Playwright browser instances. It uses a single **golden profile** to share login credentials across unlimited browser windows, with complete session isolation between concurrent AI conversations.
 
-**One MCP config entry. Unlimited browsers. Zero conflicts. 27 built-in audit tools.**
+**One MCP config entry. Unlimited browsers. Zero conflicts. 28 built-in audit tools.**
 
 ### Key numbers
 
-- **59 MCP tools** -- browser automation, UI auditing, accessibility testing, performance measurement
+- **75 MCP tools** -- browser automation, UI auditing, accessibility testing, performance measurement, storage management
 - **42 CLI commands** -- everything the MCP server does, plus benchmarking, accuracy testing, and standalone operations
-- **27 audit tools** -- accessibility, color contrast, Core Web Vitals, broken links, dark mode, SEO meta, visual diff, and more
+- **28 audit tools** -- accessibility, color contrast, Core Web Vitals, broken links, dark mode, SEO meta, visual diff, security headers, cookie compliance, and more
+- **143 device presets** -- emulate iPhone, iPad, Pixel, Galaxy, and more via `pool_launch --device`
+- **Compact snapshots** -- `snapshot_compact` uses 90% fewer tokens than full accessibility trees
 - **210 browser audit scenarios** researched and documented -- the most comprehensive browser audit coverage of any MCP server
 - **100% accuracy** on 80 planted UI bugs across test pages with varying complexity
 
@@ -53,7 +55,7 @@ AI coding assistants use MCP Playwright servers for browser automation. But the 
 | Golden profile auth sharing | Log in once, clone to all | Log in per instance | No auth sharing |
 | Cross-session isolation | UUID-based, zero conflicts | Sessions share state | Varies |
 | Window + tab modes | Both, per-context choice | Single mode | Usually one |
-| Built-in audit tools | 27 purpose-built audits | None | None |
+| Built-in audit tools | 28 purpose-built audits | None | None |
 | Accessibility testing | axe-core + WCAG 2.1 built in | External tooling | External tooling |
 | Visual regression diffing | Built-in screenshot diff | Not available | Not available |
 | Core Web Vitals measurement | One command | Not available | Not available |
@@ -68,7 +70,7 @@ Tested against Lighthouse CLI, Pa11y, and axe-core CLI on the same test pages:
 
 | Tool | Setup complexity | Audit breadth | MCP integration | Session management |
 |:-----|:----------------:|:-------------:|:---------------:|:------------------:|
-| **Playwright Pool** | One config entry | 27 audit types | Native MCP server | Dynamic pool + golden profile |
+| **Playwright Pool** | One config entry | 28 audit types + 75 MCP tools | Native MCP server | Dynamic pool + golden profile |
 | Lighthouse CLI | Separate install | Performance-focused | None | None |
 | Pa11y | Separate install | Accessibility only | None | None |
 | axe-core CLI | Separate install | Accessibility only | None | None |
