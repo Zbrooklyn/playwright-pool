@@ -143,9 +143,19 @@ function startServer(rootDir) {
 
 function detectTools() {
   const tools = { lighthouse: false, pa11y: false, 'axe-core': false };
+  const binDir = path.join(PROJECT_ROOT, 'node_modules', '.bin');
 
-  // Lighthouse
-  try {
+  // Check for local binaries first (faster than npx)
+  const lhBin = path.join(binDir, process.platform === 'win32' ? 'lighthouse.cmd' : 'lighthouse');
+  const pa11yBin = path.join(binDir, process.platform === 'win32' ? 'pa11y.cmd' : 'pa11y');
+  const axeBin = path.join(binDir, process.platform === 'win32' ? 'axe.cmd' : 'axe');
+
+  tools.lighthouse = fs.existsSync(lhBin);
+  tools.pa11y = fs.existsSync(pa11yBin);
+  tools['axe-core'] = fs.existsSync(axeBin);
+
+  // Fallback: try npx if local binary not found
+  if (!tools.lighthouse) try {
     const result = spawnSync('npx', ['lighthouse', '--version'], {
       encoding: 'utf8',
       timeout: 15000,
@@ -156,8 +166,7 @@ function detectTools() {
     tools.lighthouse = result.status === 0;
   } catch { /* not installed */ }
 
-  // Pa11y
-  try {
+  if (!tools.pa11y) try {
     const result = spawnSync('npx', ['pa11y', '--version'], {
       encoding: 'utf8',
       timeout: 15000,
@@ -168,8 +177,7 @@ function detectTools() {
     tools.pa11y = result.status === 0;
   } catch { /* not installed */ }
 
-  // axe-core CLI
-  try {
+  if (!tools['axe-core']) try {
     const result = spawnSync('npx', ['axe', '--version'], {
       encoding: 'utf8',
       timeout: 15000,

@@ -6,3 +6,5 @@ benchmark-results-*.json
 baseline.json
 playwright-audit/
 autoresearch-log.jsonl
+snap-*.md
+bench-workflow/
