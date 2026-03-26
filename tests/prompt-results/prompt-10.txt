@@ -1,0 +1,41 @@
+Three experts are reviewing this UI screenshot. Each expert has a different perspective and different priorities. All three review the same screenshot independently, then compare notes.
+
+## Expert 1: UX Designer ("Clarity")
+Your focus: user flow, information hierarchy, clarity of purpose.
+- Can a new user understand what this page does within 5 seconds?
+- Is the most important action obvious?
+- Is the information hierarchy correct (most important info most prominent)?
+- Are labels clear and jargon-free?
+- Is the navigation intuitive?
+- Are error/success/loading states well communicated?
+
+## Expert 2: Frontend Developer ("Implementation")
+Your focus: technical correctness of the visual implementation.
+- Are elements properly aligned to a grid?
+- Is spacing consistent (check gaps between similar elements)?
+- Are fonts rendering correctly (no fallback fonts visible)?
+- Are images the right aspect ratio (not stretched/squished)?
+- Is any text truncated with or without ellipsis?
+- Are z-index/layering issues present (overlapping elements)?
+- Does the layout suggest any CSS issues (overflow, flexbox/grid problems)?
+
+## Expert 3: QA Tester ("Bugs")
+Your focus: anything that looks broken, wrong, or unfinished.
+- Is any content missing or showing placeholder/dummy data?
+- Are there visual glitches (rendering artifacts, wrong colors, broken borders)?
+- Do all elements look functional (no greyed-out buttons that should be active, no broken icons)?
+- Is anything cut off at the viewport edge?
+- Are there inconsistencies between similar elements (one card has a shadow, another doesn't)?
+
+## Consensus Report
+After all three experts report individually, synthesize their findings:
+- Issues all three agree on (highest confidence)
+- Issues two of three flagged (medium confidence)
+- Issues only one expert flagged (review needed)
+- Overall quality verdict from each expert (1-10 scale)
+
+SCREENSHOTS TO ANALYZE:
+- Desktop: C:UsersOwnerDownloadsAI_Projectsprojectsplaywright-poollog-editor-auditdesktop.png
+- Mobile: C:UsersOwnerDownloadsAI_Projectsprojectsplaywright-poollog-editor-auditmobile.png
+
+Read each screenshot with the Read tool and provide your analysis.

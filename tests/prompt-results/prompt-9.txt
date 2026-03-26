@@ -1,0 +1,18 @@
+Look at this UI screenshot. What are the top 5 problems? Be specific — name the exact element, describe what's wrong, and estimate pixel values where relevant.
+
+Format:
+1. [Element] — [Problem] — [Specifics]
+2. ...
+3. ...
+4. ...
+5. ...
+
+If there are fewer than 5 problems, list only what you find. If there are more than 5, pick the 5 most impactful.
+
+After listing the problems, give one sentence summarizing the overall quality of this UI.
+
+SCREENSHOTS TO ANALYZE:
+- Desktop: C:UsersOwnerDownloadsAI_Projectsprojectsplaywright-poollog-editor-auditdesktop.png
+- Mobile: C:UsersOwnerDownloadsAI_Projectsprojectsplaywright-poollog-editor-auditmobile.png
+
+Read each screenshot with the Read tool and provide your analysis.
