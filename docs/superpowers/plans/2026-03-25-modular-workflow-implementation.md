@@ -1063,3 +1063,16 @@ git push
 | 8 | Benchmark runner | Tasks 6, 7 | After 6, 7 |
 
 **Tasks 1-4 and 7 can run in parallel.** Task 5 composes 2-4. Task 6 composes 1+5. Task 8 tests everything.
+
+---
+
+## Addendum: Review Issue Resolutions
+
+1. **Timeout strategy:** Added to interact.js — overall workflow timeout of 120s (configurable via --timeout). Each step has 10s click timeout + 15s navigation wait. If total exceeds timeout, remaining steps are skipped with error.
+2. **inspect.js naming:** Plan uses `inspect-engine.js` — no collision with existing `cli-commands/inspect.js` (devtools commands).
+3. **Audit registry:** `analyzers.js` is the new single source for programmatic checks. Existing audit.js/workflow.js stay for backward compat. New code only uses analyzers.js.
+4. **Step syntax:** Defined in Task 1 parseSteps: `click "target"`, `fill "selector" "value"`, `wait 3`, `wait "text"`, `scroll down|up|top|bottom`.
+5. **DOM size cap:** Task 2 caps at 500 elements. Intent-scoped collection could be added later but full collection + Node processing is fast enough for 500.
+6. **Fuzzy matching:** Task 3 uses keyword matching — no LLM calls. Unmatched intents default to standard checks (layout, overflow, contrast, images, headings, tap_targets).
+7. **Popup/dialog handling:** interact.js will register `page.on('dialog', d => d.dismiss())` before executing steps.
+8. **Viewport restoration:** inspect-engine.js restores original viewport after breakpoint screenshots.
