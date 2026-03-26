@@ -1,0 +1,345 @@
+{
+  "test-visual-subtle.html": {
+    "description": "SaaS pricing page with 15 subtle design bugs",
+    "difficulty": "hard",
+    "bugs": [
+      {
+        "id": "BUG-1",
+        "category": "alignment",
+        "description": "1px vertical misalignment — Enterprise card is translateY(1px) lower than siblings",
+        "element": ".card.enterprise",
+        "css_property": "transform: translateY(1px)",
+        "expected": "transform: none (aligned with other cards)",
+        "subtlety": "very high — 1px offset barely visible without measuring"
+      },
+      {
+        "id": "BUG-2",
+        "category": "typography",
+        "description": "Wrong font weight — Enterprise heading uses weight 500 while others use 600",
+        "element": ".card.enterprise .plan-name",
+        "css_property": "font-weight: 500",
+        "expected": "font-weight: 600",
+        "subtlety": "high — 500 vs 600 difference is subtle"
+      },
+      {
+        "id": "BUG-3",
+        "category": "color",
+        "description": "Off-brand CTA color — Enterprise button is #6366F1 (indigo) instead of #6D28D9 (purple)",
+        "element": ".cta-enterprise",
+        "css_property": "background: #6366F1",
+        "expected": "background: #6D28D9",
+        "subtlety": "high — both are purple tones, differ in hue/saturation"
+      },
+      {
+        "id": "BUG-4",
+        "category": "spacing",
+        "description": "Inconsistent border-radius — Popular card uses 10px while others use 12px",
+        "element": ".card.popular",
+        "css_property": "border-radius: 10px",
+        "expected": "border-radius: 12px",
+        "subtlety": "very high — 2px radius difference"
+      },
+      {
+        "id": "BUG-5",
+        "category": "typography",
+        "description": "Line-height mismatch — Enterprise feature list uses 1.4 while others use 1.6",
+        "element": ".card.enterprise .features",
+        "css_property": "line-height: 1.4",
+        "expected": "line-height: 1.6",
+        "subtlety": "high — feature list spacing slightly compressed"
+      },
+      {
+        "id": "BUG-6",
+        "category": "typography",
+        "description": "Orphaned word — heading 'Simple, transparent pricing for growing teams' leaves 'teams' alone on last line",
+        "element": ".hero h1",
+        "css_property": "natural text wrap",
+        "expected": "Use text-wrap: balance or widen container",
+        "subtlety": "medium — depends on viewport width"
+      },
+      {
+        "id": "BUG-7",
+        "category": "alignment",
+        "description": "Price decimal alignment — $9.99 has decimals while $29 and $99 don't, causing visual misalignment",
+        "element": ".price-decimal",
+        "css_property": "inconsistent decimal presence",
+        "expected": "Align all prices consistently (e.g., all with .00 or use tabular-nums)",
+        "subtlety": "medium — price row heights and baseline shift differ"
+      },
+      {
+        "id": "BUG-8",
+        "category": "spacing",
+        "description": "Toggle switch label spacing asymmetry — Monthly has 12px gap, Annual has 16px gap to toggle",
+        "element": ".toggle-label-right",
+        "css_property": "margin-left: 16px",
+        "expected": "margin-left: 12px (matching .toggle-label-left margin-right)",
+        "subtlety": "high — 4px difference in label spacing"
+      },
+      {
+        "id": "BUG-9",
+        "category": "icon",
+        "description": "Feature checkmark inconsistency — one row uses ✔ (U+2714) instead of ✓ (U+2713)",
+        "element": ".card.popular .features li:nth-child(5) .check",
+        "css_property": "content: U+2714 vs U+2713",
+        "expected": "All checkmarks should use the same Unicode character",
+        "subtlety": "very high — glyphs look nearly identical in most fonts"
+      },
+      {
+        "id": "BUG-10",
+        "category": "interaction",
+        "description": "Hover animation on wrong element — card border changes on hover instead of the CTA button",
+        "element": ".card:hover",
+        "css_property": "border-color transition on card",
+        "expected": "Hover effect should be on .cta-btn, not the entire card border",
+        "subtlety": "medium — only visible on interaction"
+      },
+      {
+        "id": "BUG-11",
+        "category": "visual",
+        "description": "Shadow direction inconsistency — Starter/Pro have bottom-right shadow, Enterprise has bottom-left",
+        "element": ".card.enterprise",
+        "css_property": "box-shadow: -4px 4px 16px",
+        "expected": "box-shadow: 4px 4px 16px (matching other cards)",
+        "subtlety": "high — shadow direction flip is subtle"
+      },
+      {
+        "id": "BUG-12",
+        "category": "alignment",
+        "description": "Popular badge off-center — positioned 2px to the left of true center",
+        "element": ".popular-badge",
+        "css_property": "left: calc(50% - 2px)",
+        "expected": "left: 50%",
+        "subtlety": "very high — 2px horizontal offset"
+      },
+      {
+        "id": "BUG-13",
+        "category": "typography",
+        "description": "Strikethrough too thick — text-decoration-thickness: 2px on 14px text looks disproportionate",
+        "element": ".price-original",
+        "css_property": "text-decoration-thickness: 2px",
+        "expected": "text-decoration-thickness: 1px or auto",
+        "subtlety": "high — barely noticeable unless comparing"
+      },
+      {
+        "id": "BUG-14",
+        "category": "responsive",
+        "description": "Mobile card gap inconsistency — gap changes from 24px (desktop) to 16px (mobile) without design intent",
+        "element": ".pricing-grid at max-width:768px",
+        "css_property": "gap: 16px",
+        "expected": "gap: 24px (maintain consistency)",
+        "subtlety": "medium — only visible at mobile viewport"
+      },
+      {
+        "id": "BUG-15",
+        "category": "interaction",
+        "description": "Footer link hover inconsistency — Privacy Policy has no underline on hover while all others do",
+        "element": ".footer-links a.no-underline",
+        "css_property": "text-decoration: none on hover",
+        "expected": "text-decoration: underline on hover (matching siblings)",
+        "subtlety": "medium — only visible on interaction"
+      }
+    ]
+  },
+  "test-visual-interaction.html": {
+    "description": "Dashboard with 10 interaction state bugs",
+    "difficulty": "hard",
+    "bugs": [
+      {
+        "id": "BUG-1",
+        "category": "state",
+        "description": "Active tab has no visual indicator other than font weight — no underline, background, or border",
+        "element": ".tab.active",
+        "css_property": "font-weight: 600 only",
+        "expected": "Should have border-bottom: 2px solid #6D28D9 or similar active indicator",
+        "subtlety": "medium — looks like tabs but active state is ambiguous"
+      },
+      {
+        "id": "BUG-2",
+        "category": "state",
+        "description": "Disabled button has pointer cursor and hover state change — should show not-allowed",
+        "element": ".btn-disabled",
+        "css_property": "cursor: pointer; hover changes background",
+        "expected": "cursor: not-allowed; no hover state change",
+        "subtlety": "medium — only visible on interaction"
+      },
+      {
+        "id": "BUG-3",
+        "category": "overflow",
+        "description": "Focus ring clipped — search input focus outline is cut off by parent overflow:hidden",
+        "element": ".search-wrapper (overflow:hidden) + .search-input:focus",
+        "css_property": "overflow: hidden on parent",
+        "expected": "overflow: visible or use box-shadow instead of outline for focus",
+        "subtlety": "high — only visible when input is focused"
+      },
+      {
+        "id": "BUG-4",
+        "category": "z-index",
+        "description": "Dropdown z-index too low — filter dropdown renders behind the Quick Actions section below",
+        "element": ".dropdown-menu (z-index: 1) vs .next-section (z-index: 2)",
+        "css_property": "z-index: 1",
+        "expected": "z-index: 50 or higher",
+        "subtlety": "medium — visible when dropdown is open"
+      },
+      {
+        "id": "BUG-5",
+        "category": "alignment",
+        "description": "Tooltip arrow misaligned — tooltip and arrow are positioned 4px to the left of the trigger",
+        "element": ".tooltip-box",
+        "css_property": "left: -4px; arrow left: 8px",
+        "expected": "left: 50%; transform: translateX(-50%) for both tooltip and arrow",
+        "subtlety": "high — only visible on hover, offset is small"
+      },
+      {
+        "id": "BUG-6",
+        "category": "state",
+        "description": "Selected row uses opacity instead of highlight — rows dim instead of highlighting",
+        "element": "tr.selected",
+        "css_property": "opacity: 0.8",
+        "expected": "background-color: #EDE9FE or similar highlight color",
+        "subtlety": "medium — dimming is counterintuitive for selection"
+      },
+      {
+        "id": "BUG-7",
+        "category": "state",
+        "description": "Parent checkbox shows checked instead of indeterminate — only 2 of 4 children are checked",
+        "element": "thead input[type='checkbox']",
+        "css_property": "checked attribute",
+        "expected": "indeterminate state via JavaScript or visual dash indicator",
+        "subtlety": "medium — requires understanding checkbox tri-state pattern"
+      },
+      {
+        "id": "BUG-8",
+        "category": "loading",
+        "description": "Skeleton placeholder dimensions mismatch — avatar 32px (actual 40px), text height 12px (actual 16px)",
+        "element": ".skeleton-avatar, .skeleton-text-long",
+        "css_property": "width/height of skeleton blocks",
+        "expected": "Skeleton dimensions should match actual loaded content dimensions",
+        "subtlety": "high — skeleton is animated so size difference is easy to miss"
+      },
+      {
+        "id": "BUG-9",
+        "category": "proportion",
+        "description": "Empty state icon disproportionately large — 128px icon in a small panel, should be ~48px",
+        "element": ".empty-icon",
+        "css_property": "font-size: 128px",
+        "expected": "font-size: 48px (proportional to panel)",
+        "subtlety": "low — this one is more obvious, tests if models catch proportion issues"
+      },
+      {
+        "id": "BUG-10",
+        "category": "alignment",
+        "description": "Notification badge overlaps the bell icon instead of sitting at the top-right corner",
+        "element": ".notif-badge",
+        "css_property": "top: 2px; right: -2px",
+        "expected": "top: -4px; right: 0 (sitting on the corner without covering the icon)",
+        "subtlety": "medium — badge positioning is slightly off"
+      }
+    ]
+  },
+  "test-visual-responsive.html": {
+    "description": "Analytics page that looks perfect at 1280px but breaks at smaller viewports",
+    "difficulty": "hard",
+    "bugs": [
+      {
+        "id": "BUG-1",
+        "category": "responsive",
+        "description": "At 1024px — 3-column metrics grid doesn't reflow, columns squeeze and content overlaps",
+        "element": ".metrics-grid",
+        "viewport": "1024px",
+        "css_property": "grid-template-columns: repeat(3, 1fr) with no 1024px breakpoint",
+        "expected": "Should reflow to 2+1 or single column at 1024px",
+        "subtlety": "medium — columns get cramped but may not obviously break"
+      },
+      {
+        "id": "BUG-2",
+        "category": "accessibility",
+        "description": "Hamburger button is 32x32px — below the 48px minimum touch target size",
+        "element": ".hamburger",
+        "viewport": "768px",
+        "css_property": "width: 32px; height: 32px",
+        "expected": "width: 48px; height: 48px minimum",
+        "subtlety": "high — button is present and functional, just undersized"
+      },
+      {
+        "id": "BUG-3",
+        "category": "overflow",
+        "description": "At 640px — horizontal stat bar items overflow their container due to min-width: 140px",
+        "element": ".stat-bar-row .stat-bar-item",
+        "viewport": "640px",
+        "css_property": "min-width: 140px with no flex-wrap",
+        "expected": "Add flex-wrap: wrap or remove min-width at narrow viewports",
+        "subtlety": "medium — overflow may be clipped or cause horizontal scroll"
+      },
+      {
+        "id": "BUG-4",
+        "category": "layout",
+        "description": "At 520px — sidebar and main content overlap because flex-wrap is missing",
+        "element": ".content-layout",
+        "viewport": "520px",
+        "css_property": "display: flex without flex-wrap",
+        "expected": "flex-wrap: wrap or flex-direction: column at this breakpoint",
+        "subtlety": "low-medium — content visibly overlaps"
+      },
+      {
+        "id": "BUG-5",
+        "category": "visual",
+        "description": "At 480px — gallery images have fixed 160px height without object-fit, causing distortion",
+        "element": ".gallery-img",
+        "viewport": "480px",
+        "css_property": "height: 160px without object-fit",
+        "expected": "Add object-fit: cover or use aspect-ratio",
+        "subtlety": "medium — solid-color divs show stretching of content alignment"
+      },
+      {
+        "id": "BUG-6",
+        "category": "spacing",
+        "description": "At 375px — footer links wrap to individual lines with 12px gaps creating excessive vertical space",
+        "element": ".footer-col a",
+        "viewport": "375px",
+        "css_property": "margin-bottom: 12px on each link in column layout",
+        "expected": "Reduce margin-bottom at mobile or use more compact layout",
+        "subtlety": "medium — footer becomes disproportionately tall"
+      },
+      {
+        "id": "BUG-7",
+        "category": "layout",
+        "description": "At 375px — CTA button text wraps to two lines due to fixed width: 200px",
+        "element": ".cta-btn",
+        "viewport": "375px",
+        "css_property": "width: 200px causes text wrap",
+        "expected": "Use auto width with padding, or white-space: nowrap",
+        "subtlety": "medium — button becomes oddly tall with wrapped text"
+      },
+      {
+        "id": "BUG-8",
+        "category": "overflow",
+        "description": "At 375px — horizontal page scroll from table with min-width: 600px and overflow: visible",
+        "element": ".table-wrapper table",
+        "viewport": "375px",
+        "css_property": "min-width: 600px; parent overflow: visible",
+        "expected": "Parent should have overflow-x: auto to contain the table",
+        "subtlety": "low — horizontal scroll is noticeable but table itself looks fine"
+      },
+      {
+        "id": "BUG-9",
+        "category": "overlap",
+        "description": "At 320px — heading text overlaps with the absolutely-positioned Beta badge",
+        "element": ".page-hero h1 + .beta-badge",
+        "viewport": "320px",
+        "css_property": "position: absolute; right: -60px on badge",
+        "expected": "Badge should reflow inline or reposition at narrow widths",
+        "subtlety": "low-medium — overlap is visible at very narrow viewports"
+      },
+      {
+        "id": "BUG-10",
+        "category": "responsive",
+        "description": "Gap between 481-767px — no media query rules apply, causing layout breakage in this range",
+        "element": "entire layout",
+        "viewport": "481-767px",
+        "css_property": "media queries jump from 768px to 480px",
+        "expected": "Add intermediate breakpoint or use fluid/clamp-based sizing",
+        "subtlety": "high — requires testing at intermediate viewport, looks fine at standard breakpoints"
+      }
+    ]
+  }
+}

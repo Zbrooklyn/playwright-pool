@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CloudStack — Analytics Overview</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #F9FAFB;
+    color: #111827;
+    line-height: 1.6;
+  }
+
+  /* ── Navigation ── */
+  .nav {
+    background: #fff;
+    border-bottom: 1px solid #E5E7EB;
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+  }
+  .nav-brand {
+    font-size: 20px;
+    font-weight: 700;
+    color: #6D28D9;
+  }
+  .nav-links {
+    display: flex;
+    gap: 28px;
+  }
+  .nav-links a {
+    font-size: 14px;
+    color: #374151;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .nav-links a:hover { color: #6D28D9; }
+  /* BUG-2: Hamburger button too small at 768px — 32x32 instead of 48px min */
+  .hamburger {
+    display: none;
+    width: 32px; /* BUG-2: below 48px minimum touch target */
+    height: 32px; /* BUG-2: below 48px minimum touch target */
+    background: none;
+    border: none;
+    cursor: pointer;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    align-items: center;
+  }
+  .hamburger span {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: #374151;
+    border-radius: 1px;
+  }
+
+  /* ── Hero Section with Badge ── */
+  .page-hero {
+    padding: 48px 32px 32px;
+    position: relative;
+  }
+  .page-hero h1 {
+    font-size: 32px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 8px;
+    position: relative;
+    display: inline-block;
+  }
+  /* BUG-9: At 320px heading text overlaps with this badge */
+  .beta-badge {
+    position: absolute;
+    top: -8px;
+    right: -60px;
+    background: #6D28D9;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 10px;
+    /* BUG-9: absolute positioning causes overlap at narrow widths */
+  }
+  .page-hero p {
+    font-size: 16px;
+    color: #6B7280;
+    max-width: 600px;
+  }
+
+  /* ── Layout: Sidebar + Main ── */
+  .content-layout {
+    display: flex;
+    gap: 24px;
+    padding: 0 32px 48px;
+    /* BUG-4: At 520px, flex-wrap not set, so sidebar and main overlap */
+    /* BUG-4: Missing flex-wrap: wrap */
+  }
+  .content-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+  }
+  .content-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ── Sidebar Card ── */
+  .sidebar-card {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .sidebar-card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 12px;
+  }
+  .sidebar-card a {
+    display: block;
+    font-size: 13px;
+    color: #6B7280;
+    text-decoration: none;
+    padding: 6px 0;
+  }
+  .sidebar-card a:hover { color: #6D28D9; }
+
+  /* ── 3-Column Grid ── */
+  .metrics-grid {
+    display: grid;
+    /* BUG-1: At 1024px this doesn't reflow — columns squeeze and overlap by 8px */
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+    /* BUG-1: No responsive breakpoint to change to 2-col or 1-col at 1024px */
+  }
+  .metric-card {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .metric-label {
+    font-size: 13px;
+    color: #6B7280;
+    margin-bottom: 4px;
+  }
+  .metric-value {
+    font-size: 28px;
+    font-weight: 700;
+  }
+  .metric-chart {
+    height: 40px;
+    margin-top: 12px;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  .metric-bar {
+    flex: 1;
+    background: #6D28D9;
+    border-radius: 2px 2px 0 0;
+    opacity: 0.7;
+  }
+
+  /* ── Horizontal Stat Bar ── */
+  .stat-bar-section {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .stat-bar-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  /* BUG-3: At 640px this bar overflows its container */
+  .stat-bar-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    /* BUG-3: No flex-wrap or overflow handling for narrow screens */
+  }
+  .stat-bar-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    /* BUG-3: min-width prevents items from shrinking */
+    min-width: 140px; /* BUG-3: causes overflow at 640px */
+    padding: 8px 16px;
+    background: #F3F4F6;
+    border-radius: 6px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .stat-bar-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Image Gallery ── */
+  .gallery-section {
+    margin-bottom: 24px;
+  }
+  .gallery-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  /* BUG-5: At 480px image aspect ratio distorts — missing object-fit */
+  .gallery-img {
+    width: 100%;
+    height: 160px;
+    background: linear-gradient(135deg, #6D28D9 0%, #A78BFA 100%);
+    border-radius: 8px;
+    /* BUG-5: No object-fit applied — images will stretch/distort */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  /* ── Data Table ── */
+  .table-wrapper {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    /* BUG-8: At 375px horizontal scroll from table min-width */
+    overflow: visible; /* BUG-8: should be overflow-x: auto for mobile */
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    /* BUG-8: min-width causes horizontal scroll at mobile */
+    min-width: 600px; /* BUG-8: table won't shrink below this */
+  }
+  th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6B7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #E5E7EB;
+  }
+  td {
+    padding: 12px 16px;
+    font-size: 14px;
+    color: #374151;
+    border-bottom: 1px solid #F3F4F6;
+  }
+
+  /* ── Learn More Button ── */
+  .cta-section {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 32px;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .cta-section h3 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .cta-section p {
+    font-size: 14px;
+    color: #6B7280;
+    margin-bottom: 16px;
+  }
+  /* BUG-7: At 375px "Learn More" wraps to two lines making button oddly tall */
+  .cta-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    background: #6D28D9;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    /* BUG-7: No white-space: nowrap — text wraps at narrow widths */
+    /* BUG-7: Fixed width forces wrap instead of allowing natural sizing */
+    width: 200px; /* BUG-7: forcing a width that causes text wrap on narrow viewports */
+  }
+
+  /* ── Footer ── */
+  footer {
+    background: #1F2937;
+    color: #D1D5DB;
+    padding: 40px 32px;
+  }
+  .footer-grid {
+    display: flex;
+    justify-content: space-between;
+    gap: 32px;
+    margin-bottom: 32px;
+  }
+  .footer-col h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 12px;
+  }
+  /* BUG-6: At 375px footer links wrap to individual lines with too much spacing */
+  .footer-col a {
+    display: block;
+    font-size: 13px;
+    color: #9CA3AF;
+    text-decoration: none;
+    margin-bottom: 12px; /* BUG-6: 12px between each link adds up at mobile */
+  }
+  .footer-col a:hover { color: #fff; }
+  .footer-bottom {
+    border-top: 1px solid #374151;
+    padding-top: 20px;
+    font-size: 12px;
+    color: #6B7280;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ── Responsive Breakpoints ── */
+
+  /* BUG-10: Gap between 481-767px where no media query applies */
+  /* This gap means the 3-column layouts don't reflow at tablet sizes */
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .hamburger { display: flex; }
+
+    .page-hero { padding: 32px 20px 24px; }
+    .page-hero h1 { font-size: 24px; }
+
+    .content-layout { padding: 0 20px 32px; }
+    /* BUG-4: sidebar not hidden or reflowed at this breakpoint */
+
+    .gallery-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* Note: no rules between 481px and 767px — BUG-10 */
+
+  @media (max-width: 480px) {
+    .content-layout {
+      flex-direction: column;
+      padding: 0 16px 24px;
+    }
+    .content-sidebar { width: 100%; }
+
+    .metrics-grid {
+      grid-template-columns: 1fr;
+    }
+    .gallery-grid {
+      grid-template-columns: 1fr;
+    }
+    /* BUG-5: gallery-img height fixed at 160px without object-fit */
+
+    .footer-grid {
+      flex-direction: column;
+      gap: 24px;
+    }
+  }
+
+  @media (max-width: 375px) {
+    .nav { padding: 0 16px; }
+    .page-hero { padding: 24px 16px 16px; }
+    .page-hero h1 { font-size: 20px; }
+  }
+
+  @media (max-width: 320px) {
+    .page-hero h1 { font-size: 18px; }
+    /* BUG-9: heading + beta badge overlap is worst here */
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">CloudStack</div>
+  <div class="nav-links">
+    <a href="#">Dashboard</a>
+    <a href="#">Analytics</a>
+    <a href="#">Reports</a>
+    <a href="#">Team</a>
+    <a href="#">Settings</a>
+  </div>
+  <button class="hamburger" aria-label="Menu">
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
+</nav>
+
+<section class="page-hero">
+  <h1>Analytics Overview <span class="beta-badge">Beta</span></h1>
+  <p>Track your application performance, user engagement, and revenue metrics in real time.</p>
+</section>
+
+<div class="content-layout">
+  <aside class="content-sidebar">
+    <div class="sidebar-card">
+      <h3>Navigation</h3>
+      <a href="#">Overview</a>
+      <a href="#">Real-time</a>
+      <a href="#">Audience</a>
+      <a href="#">Acquisition</a>
+      <a href="#">Behavior</a>
+      <a href="#">Conversions</a>
+    </div>
+    <div class="sidebar-card">
+      <h3>Quick Filters</h3>
+      <a href="#">Last 7 days</a>
+      <a href="#">Last 30 days</a>
+      <a href="#">Last quarter</a>
+      <a href="#">Custom range</a>
+    </div>
+  </aside>
+
+  <div class="content-main">
+    <!-- 3-Column Metrics -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Page Views</div>
+        <div class="metric-value">142,847</div>
+        <div class="metric-chart">
+          <div class="metric-bar" style="height:60%"></div>
+          <div class="metric-bar" style="height:45%"></div>
+          <div class="metric-bar" style="height:80%"></div>
+          <div class="metric-bar" style="height:55%"></div>
+          <div class="metric-bar" style="height:90%"></div>
+          <div class="metric-bar" style="height:70%"></div>
+          <div class="metric-bar" style="height:100%"></div>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Unique Visitors</div>
+        <div class="metric-value">38,291</div>
+        <div class="metric-chart">
+          <div class="metric-bar" style="height:40%"></div>
+          <div class="metric-bar" style="height:65%"></div>
+          <div class="metric-bar" style="height:50%"></div>
+          <div class="metric-bar" style="height:75%"></div>
+          <div class="metric-bar" style="height:85%"></div>
+          <div class="metric-bar" style="height:60%"></div>
+          <div class="metric-bar" style="height:95%"></div>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Bounce Rate</div>
+        <div class="metric-value">24.6%</div>
+        <div class="metric-chart">
+          <div class="metric-bar" style="height:80%"></div>
+          <div class="metric-bar" style="height:70%"></div>
+          <div class="metric-bar" style="height:55%"></div>
+          <div class="metric-bar" style="height:45%"></div>
+          <div class="metric-bar" style="height:35%"></div>
+          <div class="metric-bar" style="height:30%"></div>
+          <div class="metric-bar" style="height:25%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Horizontal Stat Bar -->
+    <div class="stat-bar-section">
+      <h3>Traffic Sources</h3>
+      <div class="stat-bar-row">
+        <div class="stat-bar-item">
+          <span class="stat-bar-dot" style="background:#6D28D9"></span>
+          Organic Search — 42%
+        </div>
+        <div class="stat-bar-item">
+          <span class="stat-bar-dot" style="background:#3B82F6"></span>
+          Direct — 28%
+        </div>
+        <div class="stat-bar-item">
+          <span class="stat-bar-dot" style="background:#F59E0B"></span>
+          Social Media — 18%
+        </div>
+        <div class="stat-bar-item">
+          <span class="stat-bar-dot" style="background:#10B981"></span>
+          Referral — 12%
+        </div>
+      </div>
+    </div>
+
+    <!-- Gallery -->
+    <div class="gallery-section">
+      <h3>Top Landing Pages</h3>
+      <div class="gallery-grid">
+        <div class="gallery-img">Homepage</div>
+        <div class="gallery-img" style="background: linear-gradient(135deg, #3B82F6, #93C5FD);">Pricing</div>
+        <div class="gallery-img" style="background: linear-gradient(135deg, #059669, #6EE7B7);">Blog</div>
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Page</th>
+            <th>Views</th>
+            <th>Unique Views</th>
+            <th>Avg. Time</th>
+            <th>Bounce Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>/home</td>
+            <td>42,891</td>
+            <td>31,204</td>
+            <td>2m 14s</td>
+            <td>22.4%</td>
+          </tr>
+          <tr>
+            <td>/pricing</td>
+            <td>18,432</td>
+            <td>15,891</td>
+            <td>3m 42s</td>
+            <td>18.1%</td>
+          </tr>
+          <tr>
+            <td>/blog</td>
+            <td>12,847</td>
+            <td>10,293</td>
+            <td>4m 08s</td>
+            <td>31.2%</td>
+          </tr>
+          <tr>
+            <td>/docs</td>
+            <td>9,234</td>
+            <td>7,812</td>
+            <td>5m 21s</td>
+            <td>15.7%</td>
+          </tr>
+          <tr>
+            <td>/changelog</td>
+            <td>5,102</td>
+            <td>4,231</td>
+            <td>1m 52s</td>
+            <td>42.8%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-section">
+      <h3>Unlock Advanced Analytics</h3>
+      <p>Get deeper insights with custom funnels, cohort analysis, and real-time event tracking.</p>
+      <a href="#" class="cta-btn">Learn More About Pro Analytics</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Product</h4>
+      <a href="#">Features</a>
+      <a href="#">Pricing</a>
+      <a href="#">Integrations</a>
+      <a href="#">Changelog</a>
+    </div>
+    <div class="footer-col">
+      <h4>Resources</h4>
+      <a href="#">Documentation</a>
+      <a href="#">API Reference</a>
+      <a href="#">Guides</a>
+      <a href="#">Community</a>
+    </div>
+    <div class="footer-col">
+      <h4>Company</h4>
+      <a href="#">About</a>
+      <a href="#">Blog</a>
+      <a href="#">Careers</a>
+      <a href="#">Contact</a>
+    </div>
+    <div class="footer-col">
+      <h4>Legal</h4>
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+      <a href="#">Security</a>
+      <a href="#">GDPR</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>&copy; 2026 CloudStack, Inc.</span>
+    <span>Made with care in New York</span>
+  </div>
+</footer>
+
+</body>
+</html>
