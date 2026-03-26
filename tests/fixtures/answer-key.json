@@ -583,5 +583,144 @@
         "selector": "#carouselPrev, #carouselNext"
       }
     ]
+  },
+  "test-page-images.html": {
+    "total_bugs": 5,
+    "bugs": [
+      {
+        "id": "images-1",
+        "category": "visual",
+        "severity": "serious",
+        "description": "Broken image — src points to nonexistent file /images/nonexistent-beach-photo.jpg (404)",
+        "selector": "img[src='/images/nonexistent-beach-photo.jpg']"
+      },
+      {
+        "id": "images-2",
+        "category": "visual",
+        "severity": "serious",
+        "description": "Broken image — src uses invalid protocol htp:// instead of http://",
+        "selector": "img[src^='htp://']"
+      },
+      {
+        "id": "images-3",
+        "category": "visual",
+        "severity": "serious",
+        "description": "Broken image — src is empty string, causing browser to request the page itself",
+        "selector": "img[src='']"
+      },
+      {
+        "id": "images-4",
+        "category": "accessibility",
+        "severity": "critical",
+        "description": "Broken image missing alt attribute entirely — no accessible name for screen readers",
+        "selector": "img.no-alt-broken"
+      },
+      {
+        "id": "images-5",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Informational image has empty alt=\"\" — should have descriptive alt text for the Lavender photo",
+        "selector": "img[alt='']"
+      }
+    ]
+  },
+  "test-page-product.html": {
+    "total_bugs": 4,
+    "bugs": [
+      {
+        "id": "product-1",
+        "category": "visual",
+        "severity": "critical",
+        "description": "Incorrect price — Summit GTX shows $299.90 instead of the correct price $29.99 (10x overcharge)",
+        "selector": ".also-price-wrong"
+      },
+      {
+        "id": "product-2",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Icon-only wishlist buttons in 'Also Viewed' cards have no aria-label or accessible text",
+        "selector": ".also-wishlist"
+      },
+      {
+        "id": "product-3",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Nested interactive elements — wishlist buttons are inside anchor links in the 'Also Viewed' section",
+        "selector": ".also-card .also-wishlist"
+      },
+      {
+        "id": "product-4",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Size selector buttons have no aria-pressed state to indicate which size is currently selected",
+        "selector": ".size-options button"
+      }
+    ]
+  },
+  "test-page-form.html": {
+    "total_bugs": 4,
+    "bugs": [
+      {
+        "id": "form-1",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Phone input field has no associated <label> element — only a placeholder for accessible name",
+        "selector": "#phone"
+      },
+      {
+        "id": "form-2",
+        "category": "interaction",
+        "severity": "serious",
+        "description": "Submit button does not disable after click — allows duplicate form submissions",
+        "selector": "#submitBtn"
+      },
+      {
+        "id": "form-3",
+        "category": "interaction",
+        "severity": "moderate",
+        "description": "Email field missing required attribute — form can be submitted without an email address",
+        "selector": "#email"
+      },
+      {
+        "id": "form-4",
+        "category": "accessibility",
+        "severity": "moderate",
+        "description": "Success message has role=\"status\" but no aria-live attribute — screen readers won't announce it",
+        "selector": "#successMessage"
+      }
+    ]
+  },
+  "test-page-menu.html": {
+    "total_bugs": 4,
+    "bugs": [
+      {
+        "id": "menu-1",
+        "category": "interaction",
+        "severity": "serious",
+        "description": "Mobile menu doesn't close when clicking outside it — no click listener on the overlay backdrop",
+        "selector": "#mobileNav"
+      },
+      {
+        "id": "menu-2",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Hamburger button has outline:none with no visible focus replacement — invisible to keyboard users",
+        "selector": ".hamburger"
+      },
+      {
+        "id": "menu-3",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Active nav link has poor contrast — #555 text on #1a1a2e background fails WCAG AA",
+        "selector": ".mobile-nav-panel a.active"
+      },
+      {
+        "id": "menu-4",
+        "category": "accessibility",
+        "severity": "serious",
+        "description": "Hamburger button has no aria-label or accessible text — screen readers see an empty button",
+        "selector": "#hamburgerBtn"
+      }
+    ]
   }
 }

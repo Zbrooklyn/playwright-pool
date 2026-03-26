@@ -1,0 +1,247 @@
+<!-- TEST PAGE: 4 planted bugs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Us</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 16px 24px;
+      text-align: center;
+    }
+    .header h1 { font-size: 1.4rem; font-weight: 600; }
+    .main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+    }
+    .form-container {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 40px;
+      width: 100%;
+      max-width: 560px;
+    }
+    .form-container h2 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+    .form-container .intro {
+      color: #6c757d;
+      font-size: 0.95rem;
+      margin-bottom: 28px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+      color: #333;
+    }
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #dee2e6;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      background: #fafafa;
+    }
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #4A90D9;
+      box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+      background: #fff;
+    }
+    .form-group input.error,
+    .form-group textarea.error {
+      border-color: #e74c3c;
+      box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.1);
+    }
+    .form-group .error-msg {
+      color: #e74c3c;
+      font-size: 0.82rem;
+      margin-top: 4px;
+      display: none;
+    }
+    .form-group .error-msg.visible {
+      display: block;
+    }
+    .form-group textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #4A90D9;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: 8px;
+    }
+    .submit-btn:hover { background: #357ABD; }
+    .submit-btn:disabled {
+      background: #a0c4e8;
+      cursor: not-allowed;
+    }
+    .success-message {
+      display: none;
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-top: 20px;
+      font-size: 0.95rem;
+      text-align: center;
+    }
+    .success-message.visible {
+      display: block;
+    }
+    .footer {
+      background: #1a1a2e;
+      color: #adb5bd;
+      text-align: center;
+      padding: 16px;
+      font-size: 0.82rem;
+    }
+
+    /* BUG 1: phone field has no associated <label> — just a placeholder */
+    /* BUG 2: submit button does NOT disable after click */
+    /* BUG 3: required attribute missing on email field */
+    /* BUG 4: form success message has role="status" but no aria-live for screen readers */
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>Get In Touch</h1>
+  </header>
+
+  <main class="main">
+    <div class="form-container">
+      <h2>Contact Us</h2>
+      <p class="intro">Have a question or feedback? Fill out the form below and we'll get back to you within 24 hours.</p>
+
+      <form id="contactForm" novalidate>
+        <div class="form-group">
+          <label for="name">Full Name</label>
+          <input type="text" id="name" name="name" placeholder="Jane Smith" required>
+          <div class="error-msg" id="nameError">Please enter your full name.</div>
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <!-- BUG 3: missing required attribute on email -->
+          <input type="email" id="email" name="email" placeholder="jane@example.com">
+          <div class="error-msg" id="emailError">Please enter a valid email address.</div>
+        </div>
+
+        <!-- BUG 1: no <label> element for this field — only a placeholder -->
+        <div class="form-group">
+          <input type="tel" id="phone" name="phone" placeholder="Phone number (optional)">
+        </div>
+
+        <div class="form-group">
+          <label for="message">Message</label>
+          <textarea id="message" name="message" placeholder="Tell us how we can help..." required></textarea>
+          <div class="error-msg" id="messageError">Please enter a message.</div>
+        </div>
+
+        <!-- BUG 2: submit button never gets disabled after click -->
+        <button type="submit" class="submit-btn" id="submitBtn">Send Message</button>
+      </form>
+
+      <!-- BUG 4: has role="status" but no aria-live attribute -->
+      <div class="success-message" id="successMessage" role="status">
+        Thank you! Your message has been sent. We'll respond within 24 hours.
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    &copy; 2026 Acme Corp. All rights reserved.
+  </footer>
+
+  <script>
+    const form = document.getElementById('contactForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const successMessage = document.getElementById('successMessage');
+
+    function validateField(input, errorEl) {
+      let valid = true;
+      if (input.hasAttribute('required') && !input.value.trim()) {
+        valid = false;
+      }
+      if (input.type === 'email' && input.value.trim()) {
+        valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.value.trim());
+      }
+      if (!valid) {
+        input.classList.add('error');
+        if (errorEl) errorEl.classList.add('visible');
+      } else {
+        input.classList.remove('error');
+        if (errorEl) errorEl.classList.remove('visible');
+      }
+      return valid;
+    }
+
+    // Live validation on blur
+    document.querySelectorAll('#contactForm input, #contactForm textarea').forEach(field => {
+      const errorEl = document.getElementById(field.id + 'Error');
+      field.addEventListener('blur', () => validateField(field, errorEl));
+      field.addEventListener('input', () => {
+        field.classList.remove('error');
+        if (errorEl) errorEl.classList.remove('visible');
+      });
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const nameOk = validateField(document.getElementById('name'), document.getElementById('nameError'));
+      const emailInput = document.getElementById('email');
+      const emailOk = validateField(emailInput, document.getElementById('emailError'));
+      const messageOk = validateField(document.getElementById('message'), document.getElementById('messageError'));
+
+      if (nameOk && emailOk && messageOk) {
+        // BUG 2: submit button is NOT disabled here — should be:
+        // submitBtn.disabled = true;
+        // submitBtn.textContent = 'Sending...';
+
+        // Simulate submit
+        setTimeout(() => {
+          form.style.display = 'none';
+          successMessage.classList.add('visible');
+        }, 600);
+      }
+    });
+  </script>
+</body>
+</html>

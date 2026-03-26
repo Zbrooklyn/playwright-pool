@@ -1,0 +1,148 @@
+<!-- TEST PAGE: 5 planted bugs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Gallery Test Page</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      color: #1a1a2e;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+      color: #1a1a2e;
+    }
+    .subtitle {
+      color: #6c757d;
+      margin-bottom: 32px;
+      font-size: 1.1rem;
+    }
+    h2 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      color: #1a1a2e;
+      border-bottom: 2px solid #e9ecef;
+      padding-bottom: 8px;
+    }
+    .gallery-section {
+      margin-bottom: 48px;
+    }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 20px;
+    }
+    .image-card {
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .image-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+    .image-card img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      display: block;
+      background: #e9ecef;
+    }
+    .image-card .label {
+      padding: 12px 16px;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .image-card .label .status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .status-ok { background: #d4edda; color: #155724; }
+    .status-broken { background: #f8d7da; color: #721c24; }
+
+    /* Bug 4: broken image has no alt text — missing alt attribute */
+    /* Bug 5: one working image has empty alt="" which is incorrect for informational image */
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Image Gallery</h1>
+    <p class="subtitle">A collection of working and broken images for testing image audit tools.</p>
+
+    <section class="gallery-section">
+      <h2>Working Images</h2>
+      <div class="gallery-grid">
+        <div class="image-card">
+          <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect fill='%234A90D9' width='400' height='300'/%3E%3Ctext x='200' y='150' text-anchor='middle' dy='.35em' fill='white' font-family='sans-serif' font-size='24'%3EMountain%3C/text%3E%3C/svg%3E" alt="Mountain landscape photograph">
+          <div class="label">Mountain <span class="status status-ok">OK</span></div>
+        </div>
+        <div class="image-card">
+          <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect fill='%2327AE60' width='400' height='300'/%3E%3Ctext x='200' y='150' text-anchor='middle' dy='.35em' fill='white' font-family='sans-serif' font-size='24'%3EForest%3C/text%3E%3C/svg%3E" alt="Dense forest with green trees">
+          <div class="label">Forest <span class="status status-ok">OK</span></div>
+        </div>
+        <div class="image-card">
+          <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect fill='%23E67E22' width='400' height='300'/%3E%3Ctext x='200' y='150' text-anchor='middle' dy='.35em' fill='white' font-family='sans-serif' font-size='24'%3ESunset%3C/text%3E%3C/svg%3E" alt="Colorful sunset over the ocean">
+          <div class="label">Sunset <span class="status status-ok">OK</span></div>
+        </div>
+        <div class="image-card">
+          <!-- BUG 5: empty alt on informational image — should have descriptive alt -->
+          <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect fill='%238E44AD' width='400' height='300'/%3E%3Ctext x='200' y='150' text-anchor='middle' dy='.35em' fill='white' font-family='sans-serif' font-size='24'%3ELavender%3C/text%3E%3C/svg%3E" alt="">
+          <div class="label">Lavender <span class="status status-ok">OK</span></div>
+        </div>
+        <div class="image-card">
+          <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect fill='%232C3E50' width='400' height='300'/%3E%3Ctext x='200' y='150' text-anchor='middle' dy='.35em' fill='white' font-family='sans-serif' font-size='24'%3ENight Sky%3C/text%3E%3C/svg%3E" alt="Starry night sky">
+          <div class="label">Night Sky <span class="status status-ok">OK</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="gallery-section">
+      <h2>Broken Images</h2>
+      <div class="gallery-grid">
+        <div class="image-card">
+          <!-- BUG 1: broken src — 404 -->
+          <img src="/images/nonexistent-beach-photo.jpg" alt="Beach at sunset">
+          <div class="label">Beach <span class="status status-broken">Broken</span></div>
+        </div>
+        <div class="image-card">
+          <!-- BUG 2: broken src — invalid protocol -->
+          <img src="htp://invalid-protocol.example.com/city.png" alt="City skyline">
+          <div class="label">City <span class="status status-broken">Broken</span></div>
+        </div>
+        <div class="image-card">
+          <!-- BUG 3: broken src — empty string -->
+          <img src="" alt="River flowing through valley">
+          <div class="label">River <span class="status status-broken">Broken</span></div>
+        </div>
+        <div class="image-card">
+          <!-- BUG 4: broken src AND missing alt attribute entirely -->
+          <img class="no-alt-broken" src="/assets/missing-desert.webp">
+          <div class="label">Desert <span class="status status-broken">Broken</span></div>
+        </div>
+        <div class="image-card">
+          <!-- Broken src — malformed data URI -->
+          <img src="data:image/png;base64,INVALIDBASE64DATA!!!" alt="Waterfall in tropical forest">
+          <div class="label">Waterfall <span class="status status-broken">Broken</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

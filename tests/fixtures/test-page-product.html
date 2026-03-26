@@ -1,0 +1,430 @@
+<!-- TEST PAGE: 4 planted bugs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apex Trail Runner Pro — Product Page</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      color: #1a1a2e;
+      line-height: 1.6;
+    }
+    .header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header .logo { font-size: 1.3rem; font-weight: 700; }
+    .header nav a {
+      color: #ccc;
+      text-decoration: none;
+      margin-left: 24px;
+      font-size: 0.95rem;
+    }
+    .header nav a:hover { color: #fff; }
+    .breadcrumb {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      font-size: 0.85rem;
+      color: #6c757d;
+    }
+    .breadcrumb a { color: #4A90D9; text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .product-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px 60px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: start;
+    }
+    @media (max-width: 768px) {
+      .product-container { grid-template-columns: 1fr; gap: 24px; }
+    }
+    .product-gallery {
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .product-gallery .main-image {
+      width: 100%;
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #e8f0fe 0%, #d4e4f7 100%);
+    }
+    .product-gallery .main-image svg { width: 60%; height: 60%; }
+    .product-gallery .thumbnails {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid #e9ecef;
+    }
+    .product-gallery .thumb {
+      width: 64px;
+      height: 64px;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #e9ecef;
+      transition: border-color 0.2s;
+    }
+    .product-gallery .thumb.active,
+    .product-gallery .thumb:hover {
+      border-color: #4A90D9;
+    }
+    .product-info h1 {
+      font-size: 1.8rem;
+      margin-bottom: 8px;
+      color: #1a1a2e;
+    }
+    .product-info .rating {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      font-size: 0.95rem;
+      color: #6c757d;
+    }
+    .product-info .rating .stars { color: #F5A623; font-size: 1.1rem; }
+    .product-info .price-block {
+      margin-bottom: 20px;
+    }
+    .product-info .price {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+    .product-info .price-compare {
+      font-size: 1.1rem;
+      color: #999;
+      text-decoration: line-through;
+      margin-left: 12px;
+    }
+    .product-info .price-note {
+      font-size: 0.85rem;
+      color: #27ae60;
+      margin-top: 4px;
+    }
+    .product-info .description {
+      color: #495057;
+      margin-bottom: 24px;
+      font-size: 0.95rem;
+    }
+    .product-info .features {
+      list-style: none;
+      margin-bottom: 24px;
+    }
+    .product-info .features li {
+      padding: 6px 0;
+      font-size: 0.95rem;
+      color: #495057;
+    }
+    .product-info .features li::before {
+      content: "\2713";
+      color: #27ae60;
+      font-weight: 700;
+      margin-right: 8px;
+    }
+    .size-selector {
+      margin-bottom: 24px;
+    }
+    .size-selector label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+    .size-options {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .size-options button {
+      padding: 8px 20px;
+      border: 2px solid #dee2e6;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .size-options button:hover,
+    .size-options button.selected {
+      border-color: #4A90D9;
+      background: #e8f0fe;
+      color: #4A90D9;
+    }
+    .add-to-cart-btn {
+      width: 100%;
+      padding: 16px;
+      background: #4A90D9;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-bottom: 12px;
+    }
+    .add-to-cart-btn:hover { background: #357ABD; }
+    .wishlist-btn {
+      width: 100%;
+      padding: 12px;
+      background: transparent;
+      border: 2px solid #dee2e6;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      color: #6c757d;
+      transition: all 0.2s;
+    }
+    .wishlist-btn:hover {
+      border-color: #e74c3c;
+      color: #e74c3c;
+    }
+    .trust-badges {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 20px;
+      font-size: 0.8rem;
+      color: #6c757d;
+    }
+
+    /* BUG 2: wrong price in "also viewed" section */
+    .also-viewed {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px 60px;
+    }
+    .also-viewed h2 {
+      font-size: 1.4rem;
+      margin-bottom: 20px;
+    }
+    .also-viewed-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+    }
+    .also-card {
+      background: #fff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      text-decoration: none;
+      color: inherit;
+      transition: transform 0.2s;
+    }
+    .also-card:hover { transform: translateY(-3px); }
+    .also-card .also-img {
+      height: 160px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .also-card .also-body {
+      padding: 12px 16px;
+    }
+    .also-card .also-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 4px;
+    }
+    .also-card .also-price {
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+
+    /* BUG 3: missing aria-label on icon-only wishlist button in also-viewed cards */
+    .also-card .also-wishlist {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(255,255,255,0.9);
+      border: none;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .also-card { position: relative; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo">TrailGear Co.</div>
+    <nav>
+      <a href="#">Shop</a>
+      <a href="#">New Arrivals</a>
+      <a href="#">Sale</a>
+      <a href="#">About</a>
+    </nav>
+  </header>
+
+  <div class="breadcrumb">
+    <a href="#">Home</a> / <a href="#">Running</a> / <a href="#">Trail Shoes</a> / Apex Trail Runner Pro
+  </div>
+
+  <div class="product-container">
+    <div class="product-gallery">
+      <div class="main-image">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 160">
+          <rect fill="#4A90D9" rx="12" width="200" height="120" y="20"/>
+          <ellipse cx="100" cy="140" rx="80" ry="10" fill="#e0e0e0" opacity="0.5"/>
+          <path d="M40 100 L60 60 L100 80 L140 50 L170 90 L170 120 L40 120Z" fill="#357ABD"/>
+          <text x="100" y="45" text-anchor="middle" fill="white" font-family="sans-serif" font-size="16" font-weight="bold">APEX PRO</text>
+        </svg>
+      </div>
+      <div class="thumbnails">
+        <div class="thumb active">
+          <svg width="40" height="40"><rect fill="#4A90D9" rx="4" width="40" height="40"/><text x="20" y="24" text-anchor="middle" fill="white" font-size="10">Front</text></svg>
+        </div>
+        <div class="thumb">
+          <svg width="40" height="40"><rect fill="#5BA0E9" rx="4" width="40" height="40"/><text x="20" y="24" text-anchor="middle" fill="white" font-size="10">Side</text></svg>
+        </div>
+        <div class="thumb">
+          <svg width="40" height="40"><rect fill="#357ABD" rx="4" width="40" height="40"/><text x="20" y="24" text-anchor="middle" fill="white" font-size="10">Back</text></svg>
+        </div>
+        <div class="thumb">
+          <svg width="40" height="40"><rect fill="#2C6DAF" rx="4" width="40" height="40"/><text x="20" y="24" text-anchor="middle" fill="white" font-size="10">Sole</text></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="product-info">
+      <h1>Apex Trail Runner Pro</h1>
+      <div class="rating">
+        <span class="stars">&#9733;&#9733;&#9733;&#9733;&#9734;</span>
+        <span>4.2 (128 reviews)</span>
+      </div>
+
+      <div class="price-block">
+        <!-- BUG 1: correct price is $29.99 -->
+        <span class="price">$29.99</span>
+        <span class="price-compare">$49.99</span>
+        <div class="price-note">You save $20.00 (40% off)</div>
+      </div>
+
+      <p class="description">
+        Built for rugged terrain, the Apex Trail Runner Pro features aggressive grip,
+        waterproof uppers, and responsive cushioning. Whether you're tackling mountain
+        trails or muddy paths, these shoes deliver comfort and stability mile after mile.
+      </p>
+
+      <ul class="features">
+        <li>Waterproof GORE-TEX membrane</li>
+        <li>Vibram Megagrip outsole</li>
+        <li>EVA midsole with rock plate</li>
+        <li>Reinforced toe cap</li>
+        <li>Reflective details for low-light visibility</li>
+      </ul>
+
+      <div class="size-selector">
+        <label for="size-options">Select Size</label>
+        <div class="size-options" id="size-options">
+          <button>7</button>
+          <button>8</button>
+          <button class="selected">9</button>
+          <button>10</button>
+          <button>11</button>
+          <button>12</button>
+        </div>
+      </div>
+
+      <button class="add-to-cart-btn" id="addToCart">Add to Cart &mdash; $29.99</button>
+      <button class="wishlist-btn">&#9825; Add to Wishlist</button>
+
+      <div class="trust-badges">
+        <span>&#128666; Free Shipping</span>
+        <span>&#128259; 30-Day Returns</span>
+        <span>&#128274; Secure Checkout</span>
+      </div>
+    </div>
+  </div>
+
+  <section class="also-viewed">
+    <h2>Customers Also Viewed</h2>
+    <div class="also-viewed-grid">
+      <a class="also-card" href="#">
+        <!-- BUG 3: icon-only button with no aria-label or text -->
+        <button class="also-wishlist">&#9825;</button>
+        <div class="also-img" style="background: linear-gradient(135deg, #fde68a, #f59e0b);">
+          <svg width="80" height="60"><rect fill="rgba(0,0,0,0.15)" rx="8" width="80" height="60"/><text x="40" y="35" text-anchor="middle" fill="white" font-size="11">Trailblazer</text></svg>
+        </div>
+        <div class="also-body">
+          <div class="also-title">Trailblazer Lite</div>
+          <div class="also-price">$24.99</div>
+        </div>
+      </a>
+      <a class="also-card" href="#">
+        <button class="also-wishlist">&#9825;</button>
+        <div class="also-img" style="background: linear-gradient(135deg, #a7f3d0, #10b981);">
+          <svg width="80" height="60"><rect fill="rgba(0,0,0,0.15)" rx="8" width="80" height="60"/><text x="40" y="35" text-anchor="middle" fill="white" font-size="11">Summit</text></svg>
+        </div>
+        <div class="also-body">
+          <div class="also-title">Summit GTX</div>
+          <!-- BUG 2: incorrect price — shows $299.90 instead of correct $29.99 -->
+          <div class="also-price also-price-wrong">$299.90</div>
+        </div>
+      </a>
+      <a class="also-card" href="#">
+        <button class="also-wishlist">&#9825;</button>
+        <div class="also-img" style="background: linear-gradient(135deg, #c4b5fd, #7c3aed);">
+          <svg width="80" height="60"><rect fill="rgba(0,0,0,0.15)" rx="8" width="80" height="60"/><text x="40" y="35" text-anchor="middle" fill="white" font-size="11">Ridge</text></svg>
+        </div>
+        <div class="also-body">
+          <div class="also-title">Ridge Runner</div>
+          <div class="also-price">$34.99</div>
+        </div>
+      </a>
+      <a class="also-card" href="#">
+        <!-- BUG 4: nested interactive — button inside anchor link -->
+        <button class="also-wishlist">&#9825;</button>
+        <div class="also-img" style="background: linear-gradient(135deg, #fca5a5, #ef4444);">
+          <svg width="80" height="60"><rect fill="rgba(0,0,0,0.15)" rx="8" width="80" height="60"/><text x="40" y="35" text-anchor="middle" fill="white" font-size="11">Velocity</text></svg>
+        </div>
+        <div class="also-body">
+          <div class="also-title">Velocity X</div>
+          <div class="also-price">$39.99</div>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <script>
+    // Size selector
+    document.querySelectorAll('.size-options button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.size-options button').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+      });
+    });
+
+    // Thumbnail selector
+    document.querySelectorAll('.thumb').forEach(thumb => {
+      thumb.addEventListener('click', () => {
+        document.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
+        thumb.classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

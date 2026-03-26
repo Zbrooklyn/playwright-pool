@@ -1,0 +1,312 @@
+<!-- TEST PAGE: 4 planted bugs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Horizon App — Navigation Test</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      color: #1a1a2e;
+      line-height: 1.6;
+    }
+
+    /* ── Header / Navigation ── */
+    .header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .desktop-nav {
+      display: flex;
+      gap: 28px;
+    }
+    .desktop-nav a {
+      color: #ccc;
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: color 0.2s;
+    }
+    .desktop-nav a:hover { color: #fff; }
+
+    /* Hamburger button */
+    .hamburger {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      /* BUG 2: no focus outline replacement */
+      outline: none;
+    }
+    .hamburger span {
+      display: block;
+      width: 24px;
+      height: 3px;
+      background: #fff;
+      margin: 4px 0;
+      border-radius: 2px;
+      transition: transform 0.3s, opacity 0.3s;
+    }
+    .hamburger.open span:nth-child(1) {
+      transform: translateY(7px) rotate(45deg);
+    }
+    .hamburger.open span:nth-child(2) {
+      opacity: 0;
+    }
+    .hamburger.open span:nth-child(3) {
+      transform: translateY(-7px) rotate(-45deg);
+    }
+
+    /* Mobile nav overlay */
+    .mobile-nav {
+      display: none;
+      position: fixed;
+      top: 64px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 99;
+    }
+    .mobile-nav.open {
+      display: block;
+    }
+    .mobile-nav-panel {
+      background: #1a1a2e;
+      width: 280px;
+      height: 100%;
+      padding: 24px;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+    }
+    .mobile-nav.open .mobile-nav-panel {
+      transform: translateX(0);
+    }
+    .mobile-nav-panel a {
+      display: block;
+      color: #e0e0e0;
+      text-decoration: none;
+      padding: 14px 16px;
+      font-size: 1.05rem;
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .mobile-nav-panel a:hover {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+    }
+    /* BUG 3: active nav link has poor contrast — #555 on #1a1a2e background */
+    .mobile-nav-panel a.active {
+      color: #555;
+      font-weight: 600;
+    }
+
+    @media (max-width: 768px) {
+      .desktop-nav { display: none; }
+      .hamburger { display: block; }
+    }
+
+    /* ── Hero ── */
+    .hero {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 60px 24px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 2.4rem;
+      margin-bottom: 16px;
+      color: #1a1a2e;
+    }
+    .hero p {
+      font-size: 1.1rem;
+      color: #6c757d;
+      max-width: 600px;
+      margin: 0 auto 32px;
+    }
+    .hero .cta-btn {
+      display: inline-block;
+      padding: 14px 36px;
+      background: #4A90D9;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .hero .cta-btn:hover { background: #357ABD; }
+
+    /* ── Content sections ── */
+    .content {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+    .section {
+      margin-bottom: 48px;
+    }
+    .section h2 {
+      font-size: 1.6rem;
+      margin-bottom: 12px;
+      color: #1a1a2e;
+    }
+    .section p {
+      color: #495057;
+      font-size: 0.95rem;
+      margin-bottom: 16px;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .feature-card h3 {
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+      color: #1a1a2e;
+    }
+    .feature-card p {
+      font-size: 0.9rem;
+      color: #6c757d;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      background: #1a1a2e;
+      color: #adb5bd;
+      text-align: center;
+      padding: 24px;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo">Horizon</div>
+    <nav class="desktop-nav">
+      <a href="#home">Home</a>
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#docs">Documentation</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <!-- BUG 4: hamburger has no aria-label or accessible name -->
+    <button class="hamburger" id="hamburgerBtn">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </header>
+
+  <!-- Mobile navigation -->
+  <div class="mobile-nav" id="mobileNav">
+    <nav class="mobile-nav-panel" id="mobileNavPanel">
+      <a href="#home" class="active">Home</a>
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#docs">Documentation</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </div>
+
+  <section class="hero" id="home">
+    <h1>Build Better, Faster</h1>
+    <p>Horizon gives your team the tools to ship products at lightning speed without sacrificing quality.</p>
+    <a href="#features" class="cta-btn">Explore Features</a>
+  </section>
+
+  <div class="content">
+    <section class="section" id="features">
+      <h2>Features</h2>
+      <p>Everything you need to build modern applications, from prototyping to production.</p>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <h3>Real-Time Sync</h3>
+          <p>Collaborate with your team in real-time. Changes propagate instantly across all connected clients.</p>
+        </div>
+        <div class="feature-card">
+          <h3>API Builder</h3>
+          <p>Design, test, and deploy APIs with our visual builder. No boilerplate, just business logic.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Smart Analytics</h3>
+          <p>Understand user behavior with built-in analytics. Track events, funnels, and cohorts effortlessly.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="pricing">
+      <h2>Pricing</h2>
+      <p>Simple, transparent pricing. No hidden fees. Start free and scale as you grow.</p>
+    </section>
+
+    <section class="section" id="docs">
+      <h2>Documentation</h2>
+      <p>Comprehensive guides, API references, and tutorials to get you up and running quickly.</p>
+    </section>
+
+    <section class="section" id="contact">
+      <h2>Contact</h2>
+      <p>Questions? Reach out to our team at support@horizon.app and we'll get back to you within 24 hours.</p>
+    </section>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 Horizon Inc. All rights reserved.
+  </footer>
+
+  <script>
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const mobileNav = document.getElementById('mobileNav');
+
+    // Toggle menu on hamburger click
+    hamburgerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = mobileNav.classList.toggle('open');
+      hamburgerBtn.classList.toggle('open', isOpen);
+    });
+
+    // BUG 1: Menu does NOT close when clicking outside it
+    // The overlay (.mobile-nav) receives clicks on the dark backdrop area,
+    // but there is no listener to close the menu.
+    // A correct implementation would be:
+    // mobileNav.addEventListener('click', (e) => {
+    //   if (e.target === mobileNav) {
+    //     mobileNav.classList.remove('open');
+    //     hamburgerBtn.classList.remove('open');
+    //   }
+    // });
+
+    // Close menu when a nav link is clicked
+    document.querySelectorAll('.mobile-nav-panel a').forEach(link => {
+      link.addEventListener('click', () => {
+        mobileNav.classList.remove('open');
+        hamburgerBtn.classList.remove('open');
+      });
+    });
+  </script>
+</body>
+</html>
