@@ -8,3 +8,4 @@ playwright-audit/
 autoresearch-log.jsonl
 snap-*.md
 bench-workflow/
+playwright-inspect/
