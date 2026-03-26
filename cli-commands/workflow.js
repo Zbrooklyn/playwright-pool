@@ -725,6 +725,51 @@ async function workflowMonitor(args) {
   }
 }
 
+// ─── Workflow: inspect ───────────────────────────────────────────────────────
+
+async function workflowInspect(args) {
+  const { flags, positional } = parseArgsMulti(args);
+  const url = positional[0];
+  if (!url) {
+    console.error('Usage: playwright-pool inspect <url> [--steps "..."] [--intent "..."] [--detail quick|standard|deep] [--save dir] [--auth false] [--headed]');
+    process.exit(1);
+  }
+
+  const steps = normalizeClicks(flags); // reuse existing click parsing via --click
+  const intent = flags.intent || null;
+  const detail = flags.detail || 'standard';
+  const savePath = flags.save || null;
+  const auth = flags.auth !== 'false';
+
+  const { interact } = await import('./interact.js');
+  const { inspect } = await import('./inspect-engine.js');
+
+  // Module A: Interact — get to the page
+  const { page, context, tempDir, log } = await interact(url, steps, {
+    auth,
+    headed: !!flags.headed,
+  });
+
+  // Module B: Inspect — analyze the page
+  const result = await inspect(page, { intent, detail, savePath });
+
+  // Output
+  console.log(result.report);
+  console.log(`\nTime: ${(result.time / 1000).toFixed(1)}s | Checks: ${result.checksRun.join(', ')}`);
+
+  // Cleanup
+  await context.close();
+  if (tempDir) {
+    const fs = await import('fs');
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+  process.exit(0);
+}
+
+export async function handleInspectWorkflow(args) {
+  return workflowInspect(args);
+}
+
 // ─── Router ─────────────────────────────────────────────────────────────────
 
 export async function handleWorkflow(args) {

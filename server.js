@@ -384,6 +384,25 @@ const utilityToolSchemas = [
     }),
     type: 'readOnly',
   },
+  {
+    name: 'workflow_inspect',
+    title: 'Intent-driven page inspection',
+    description:
+      'Intent-driven page inspection: screenshots at breakpoints, single-pass DOM collection, runs relevant analyzers based on intent, returns formatted report. Uses the active pool page.',
+    inputSchema: mcpBundle.z.object({
+      url: mcpBundle.z.string().describe('URL to inspect (navigates the active page)'),
+      steps: mcpBundle.z.array(mcpBundle.z.string()).optional().describe('Interaction steps before inspecting (e.g., ["click \'Blog\'", "wait 2"])'),
+      intent: mcpBundle.z.string().optional().describe('Natural language intent for analysis (e.g., "does this look right?", "check mobile", "check seo")'),
+      detail: mcpBundle.z.enum(['quick', 'standard', 'deep']).optional().describe('Report detail level (default: standard)'),
+      breakpoints: mcpBundle.z.array(mcpBundle.z.object({
+        width: mcpBundle.z.number(),
+        height: mcpBundle.z.number(),
+        label: mcpBundle.z.string(),
+      })).optional().describe('Breakpoints to screenshot at (default: desktop 1280x800, tablet 768x1024, mobile 375x812)'),
+      savePath: mcpBundle.z.string().optional().describe('Directory to save screenshots and report'),
+    }),
+    type: 'readOnly',
+  },
 ];
 
 // --- Custom browser tool definitions (not in upstream @playwright/mcp) ---
@@ -2108,6 +2127,78 @@ async function handleWorkflowAuditPage(params) {
   }
 }
 
+// --- Workflow inspect tool handler (workflow_inspect via MCP) ---
+
+async function handleWorkflowInspect(params) {
+  const { inspect } = await import('./cli-commands/inspect-engine.js');
+  const { clickAndSettle } = await import('./cli-commands/workflow.js');
+  const { parseSteps } = await import('./cli-commands/interact.js');
+
+  // Use the active pool page if available, otherwise launch standalone
+  let page, browser, standalone = false;
+  if (activeId && poolEntries.has(activeId)) {
+    const entry = poolEntries.get(activeId);
+    const ctx = entry.browserContext;
+    if (ctx) {
+      const pages = ctx.pages();
+      page = pages[pages.length - 1] || await ctx.newPage();
+    }
+  }
+
+  if (!page) {
+    const { chromium: pw } = await import('playwright');
+    browser = await pw.launch({ headless: true });
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    page = await context.newPage();
+    standalone = true;
+  }
+
+  const url = params.url;
+  const steps = params.steps || [];
+  const intent = params.intent || null;
+  const detail = params.detail || 'standard';
+  const breakpoints = params.breakpoints || [
+    { label: 'desktop', width: 1280, height: 800 },
+    { label: 'tablet', width: 768, height: 1024 },
+    { label: 'mobile', width: 375, height: 812 },
+  ];
+  const savePath = params.savePath || null;
+
+  try {
+    // Navigate
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(500);
+
+    // Execute interaction steps
+    const parsedSteps = parseSteps(steps);
+    for (const step of parsedSteps) {
+      if (step.action === 'click') {
+        await clickAndSettle(page, step.target);
+      } else if (step.action === 'wait') {
+        await page.waitForTimeout(step.seconds * 1000);
+      } else if (step.action === 'scroll') {
+        const scrollMap = { down: 500, up: -500, bottom: 99999, top: -99999 };
+        await page.evaluate(y => window.scrollBy(0, y), scrollMap[step.direction] || 500);
+      }
+    }
+
+    // Run inspect engine
+    const result = await inspect(page, { intent, detail, breakpoints, savePath });
+
+    // Build response
+    const lines = [];
+    lines.push(result.report);
+    lines.push('');
+    lines.push(`Time: ${(result.time / 1000).toFixed(1)}s | Checks: ${result.checksRun.join(', ')}`);
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  } finally {
+    if (standalone && browser) {
+      await browser.close().catch(() => {});
+    }
+  }
+}
+
 // --- Pool tool handlers ---
 
 async function handlePoolLaunch(params) {
@@ -2548,6 +2639,16 @@ class PoolCompositeBackend {
       const parsed = schema.inputSchema.parse(rawArguments || {});
       try {
         return await handleWorkflowAuditPage(parsed);
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Error in ${name}: ${error.message}` }], isError: true };
+      }
+    }
+
+    if (name === 'workflow_inspect') {
+      const schema = utilityToolSchemas.find(s => s.name === name);
+      const parsed = schema.inputSchema.parse(rawArguments || {});
+      try {
+        return await handleWorkflowInspect(parsed);
       } catch (error) {
         return { content: [{ type: 'text', text: `Error in ${name}: ${error.message}` }], isError: true };
       }

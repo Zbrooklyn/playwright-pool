@@ -81,6 +81,13 @@ switch (command) {
     break;
   }
 
+  // ── Inspect (standalone — interact + analyze in one command) ────
+  case 'inspect': {
+    const { handleInspectWorkflow } = await import('./cli-commands/workflow.js');
+    await handleInspectWorkflow(args.slice(1));
+    break;
+  }
+
   // ── Workflow (standalone — batched multi-step operations) ───────
   case 'workflow': {
     const { handleWorkflow } = await import('./cli-commands/workflow.js');
