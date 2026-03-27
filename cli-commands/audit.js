@@ -15,12 +15,12 @@ import { parseArgs, getViewport, timestamp, ensureDir, launchStandalone, DEVICES
 // ─── Audit Registry ──────────────────────────────────────────────────
 
 const AUDIT_CATEGORIES = {
-  performance: ['core_web_vitals', 'image_sizes', 'fonts', 'loading_states'],
+  performance: ['core_web_vitals', 'image_sizes', 'fonts'],
   accessibility: ['accessibility', 'color_contrast', 'focus_order', 'tap_targets', 'interactive_states'],
   seo: ['meta', 'broken_links'],
   security: ['security_headers', 'mixed_content', 'third_party_scripts', 'cookie_compliance'],
   visual: ['breakpoints', 'overflow', 'dark_mode', 'element_overlap', 'spacing_consistency',
-           'z_index_map', 'scroll_behavior', 'print_layout', 'computed_styles'],
+           'z_index_map'],
   forms: ['form_validation'],
   comprehensive: ['lighthouse'],
   vision: ['vision_review'],
@@ -47,15 +47,11 @@ export const AUDIT_HANDLERS = {
   interactive_states: auditInteractiveStates,
   spacing_consistency: auditSpacingConsistency,
   z_index_map: auditZIndexMap,
-  loading_states: auditStub,
   form_validation: auditFormValidation,
-  print_layout: auditStub,
-  scroll_behavior: auditStub,
   element_overlap: auditElementOverlap,
   mixed_content: auditMixedContent,
   third_party_scripts: auditThirdPartyScripts,
   cookie_compliance: auditCookieCompliance,
-  computed_styles: auditStub,
   vision_review: auditVisionReview,
 };
 
@@ -312,7 +308,7 @@ function printAuditList(filterCategory) {
     if (filterCategory && category !== filterCategory) continue;
     console.log(`  ${category.toUpperCase()}`);
     for (const a of audits) {
-      const implemented = AUDIT_HANDLERS[a] && AUDIT_HANDLERS[a] !== auditStub;
+      const implemented = !!AUDIT_HANDLERS[a];
       const marker = implemented ? '+' : '-';
       console.log(`    [${marker}] ${a}`);
     }
@@ -445,12 +441,6 @@ function sanitizeDirName(url) {
   } catch {
     return 'unknown';
   }
-}
-
-// ─── Stub for unimplemented audits ───────────────────────────────────
-
-async function auditStub(page, _context, _opts) {
-  return { issues: [], text: 'Not yet implemented in CLI mode.' };
 }
 
 // ─── 1. audit_meta ──────────────────────────────────────────────────
