@@ -1,14 +1,28 @@
-# Test fixtures and benchmarks — not needed by users
+# Test fixtures and benchmarks
 tests/
 scripts/
 docs/
+
+# Benchmark & audit outputs
 benchmark-results-*.json
 baseline.json
 autoresearch-log.jsonl
 playwright-audit/
+playwright-inspect/
+blog-editor-audit/
+w3c-bad-audit/
+bench-workflow/
 *.output
+
+# Temp files
+screenshot-*.png
+tabs.json
+tab-check.txt
+vision-review.json
+snap-*.md
 
 # Development files
 CLAUDE.md
 ROADMAP.md
 .gitignore
+.npmignore
