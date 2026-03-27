@@ -81,7 +81,7 @@ export function clearState() {
   if (fs.existsSync(STATE_FILE)) fs.unlinkSync(STATE_FILE);
 }
 
-// Connect to an existing browser via CDP
+// Connect to an existing browser via Playwright WebSocket
 export async function connectToActiveBrowser() {
   const state = loadState();
   if (!state || !state.wsEndpoint) {
@@ -90,14 +90,25 @@ export async function connectToActiveBrowser() {
   }
   try {
     const browser = await chromium.connectOverCDP(state.wsEndpoint);
+    // connectOverCDP shares all contexts/tabs with the running browser
     const contexts = browser.contexts();
-    if (contexts.length === 0) {
-      console.error('Browser has no contexts. Run `playwright-pool browser launch` first.');
-      process.exit(1);
+    let context, page;
+    if (contexts.length > 0) {
+      context = contexts[0];
+      const pages = context.pages();
+      page = pages[pages.length - 1] || await context.newPage();
+    } else {
+      const viewport = state.viewport || { width: 1280, height: 800 };
+      context = await browser.newContext({ viewport, ignoreHTTPSErrors: true });
+      page = await context.newPage();
     }
-    const context = contexts[0];
-    const pages = context.pages();
-    const page = pages[pages.length - 1] || await context.newPage();
+
+    // Override close to just disconnect (don't kill Chrome)
+    const originalClose = browser.close.bind(browser);
+    browser.disconnect = () => {
+      // CDP connections auto-disconnect on process exit, this is a no-op safety
+    };
+
     return { browser, context, page };
   } catch (err) {
     console.error(`Cannot connect to browser: ${err.message}`);
@@ -118,7 +129,7 @@ export async function getOrLaunchBrowser(flags = {}) {
       const contexts = browser.contexts();
       if (contexts.length > 0) {
         const context = contexts[0];
-        const page = await context.newPage();
+        const page = context.pages()[context.pages().length - 1] || await context.newPage();
         const viewport = getViewport(flags);
         await page.setViewportSize(viewport);
         return { browser, context, page, reused: true };

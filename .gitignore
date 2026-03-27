@@ -2,10 +2,21 @@ node_modules/
 package-lock.json
 pool-contexts/
 *.log
+
+# Benchmark & audit outputs
 benchmark-results-*.json
 baseline.json
 playwright-audit/
+playwright-inspect/
 autoresearch-log.jsonl
 snap-*.md
 bench-workflow/
-playwright-inspect/
+blog-editor-audit/
+w3c-bad-audit/
+
+# Temp files
+screenshot-*.png
+tabs.json
+tab-check.txt
+vision-review.json
+*.output

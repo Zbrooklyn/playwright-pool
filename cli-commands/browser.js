@@ -22,6 +22,20 @@ export async function handleBrowser(args) {
     case 'list':     return browserList(rest);
     case 'switch':   return browserSwitch(rest);
     case 'close':    return browserClose(rest);
+    case 'status': {
+      const state = loadState();
+      if (!state || !state.wsEndpoint) { console.log('No active browser.'); return; }
+      try {
+        const browser = await chromium.connectOverCDP(state.wsEndpoint);
+        console.log(`Active browser [${state.label || 'default'}]`);
+        console.log(`  Viewport: ${state.viewport?.width || '?'}x${state.viewport?.height || '?'}`);
+        console.log(`  WS:       ${state.wsEndpoint}`);
+        process.exit(0);
+      } catch {
+        console.log('Browser session found but not reachable (stale).'); clearState();
+      }
+      return;
+    }
     case 'navigate': return browserNavigate(rest);
     case 'back':     return browserBack(rest);
     case 'tabs':     return browserTabs(rest);
@@ -55,7 +69,7 @@ async function browserLaunch(args) {
   if (existing && existing.wsEndpoint) {
     try {
       const test = await chromium.connectOverCDP(existing.wsEndpoint);
-      test.disconnect();
+      // Connection succeeded — browser is alive. Don't close (kills server).
       console.error(`Browser already running [${existing.label || 'default'}].`);
       console.error('Close it first with: playwright-pool browser close all');
       process.exit(1);
@@ -65,31 +79,53 @@ async function browserLaunch(args) {
     }
   }
 
-  // Launch browser with CDP enabled
-  const browser = await chromium.launch({
-    headless: false,
-    args: ['--remote-debugging-port=0', '--disable-blink-features=AutomationControlled'],
-  });
+  // Launch bare Chromium with CDP remote debugging.
+  // We launch via child_process so we get a real Chrome process with CDP, not Playwright's wrapper.
+  const CDP_PORT = 9222 + Math.floor(Math.random() * 1000);
+  const browserExe = chromium.executablePath();
+  const { spawn } = await import('child_process');
 
-  // Get the CDP WebSocket endpoint for reconnection
-  const wsEndpoint = browser.wsEndpoint();
+  const chromeProcess = spawn(browserExe, [
+    `--remote-debugging-port=${CDP_PORT}`,
+    '--disable-blink-features=AutomationControlled',
+    '--no-first-run',
+    '--no-default-browser-check',
+    `--window-size=${viewport.width},${viewport.height}`,
+    'about:blank',
+  ], { stdio: 'ignore', detached: false });
 
-  // Create context with requested viewport
-  const context = await browser.newContext({ viewport });
-  const page = await context.newPage();
+  // Wait for Chrome to start and CDP to be ready
+  const cdpEndpoint = `http://localhost:${CDP_PORT}`;
+  let browser;
+  for (let i = 0; i < 20; i++) {
+    try {
+      await new Promise(r => setTimeout(r, 500));
+      browser = await chromium.connectOverCDP(cdpEndpoint);
+      break;
+    } catch {
+      // Chrome not ready yet, retry
+    }
+  }
+  if (!browser) {
+    console.error('Failed to connect to Chrome after 10s');
+    chromeProcess.kill();
+    process.exit(1);
+  }
 
-  // Navigate to about:blank to signal readiness
-  await page.goto('about:blank');
+  // Get the default context and page (Chrome opens with about:blank)
+  const context = browser.contexts()[0];
+  const page = context.pages()[0] || await context.newPage();
+  await page.setViewportSize(viewport);
 
-  // Save state for other CLI commands to reconnect
-  saveState({ wsEndpoint, label, mode, viewport });
+  // Save state — other CLI commands use connectOverCDP with this endpoint
+  saveState({ wsEndpoint: cdpEndpoint, label, mode, viewport });
 
   console.log(`Browser launched [${label}] (${viewport.width}x${viewport.height})`);
-  console.log(`WebSocket: ${wsEndpoint}`);
+  console.log(`CDP: ${cdpEndpoint} (port ${CDP_PORT})`);
   console.log('Browser is running. Use other commands to interact. Close with: playwright-pool browser close all');
 
-  // Keep process alive until browser closes
-  await new Promise((resolve) => browser.on('disconnected', resolve));
+  // Keep process alive until Chrome exits
+  await new Promise((resolve) => chromeProcess.on('exit', resolve));
   clearState();
   console.log('Browser closed.');
 }
@@ -113,7 +149,7 @@ async function browserList(_args) {
     console.log(`  Contexts: ${contexts.length}`);
     console.log(`  Pages:    ${totalPages}`);
     console.log(`  WS:       ${state.wsEndpoint}`);
-    browser.disconnect();
+    // Don't close — just exit. close() kills the server.
   } catch {
     console.log('Browser session found but not reachable (stale).');
     clearState();
@@ -145,13 +181,14 @@ async function browserSwitch(args) {
 
   if (!page) {
     console.error(`No tab matching "${target}". Use \`browser tabs\` to see open tabs.`);
-    browser.disconnect();
+    await browser.close();
     process.exit(1);
   }
 
   await page.bringToFront();
   console.log(`Switched to: ${page.url()} — ${await page.title()}`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── close ───────────────────────────────────────────────────────
@@ -174,6 +211,7 @@ async function browserClose(args) {
       await browser.close();
       clearState();
       console.log('Browser closed.');
+      process.exit(0);
     } else {
       // Close a specific tab by index or URL substring
       const contexts = browser.contexts();
@@ -193,7 +231,8 @@ async function browserClose(args) {
       } else {
         console.error(`No tab matching "${target}".`);
       }
-      browser.disconnect();
+      // Don't close browser — just exit after closing the tab
+      process.exit(0);
     }
   } catch {
     console.log('Browser not reachable. Clearing stale state.');
@@ -226,7 +265,8 @@ async function browserNavigate(args) {
   const title = await targetPage.title();
   console.log(`Navigated: ${targetPage.url()}`);
   console.log(`Title: ${title}`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── back ────────────────────────────────────────────────────────
@@ -236,25 +276,37 @@ async function browserBack(_args) {
   await page.goBack({ waitUntil: 'domcontentloaded' });
   console.log(`Navigated back: ${page.url()}`);
   console.log(`Title: ${await page.title()}`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── tabs ────────────────────────────────────────────────────────
 
 async function browserTabs(_args) {
-  const { browser, context } = await connectToActiveBrowser();
-  const pages = context.pages();
-  if (pages.length === 0) {
-    console.log('No open tabs.');
-  } else {
-    console.log(`${pages.length} open tab${pages.length === 1 ? '' : 's'}:`);
-    for (let i = 0; i < pages.length; i++) {
-      const p = pages[i];
-      const title = await p.title();
-      console.log(`  [${i}] ${p.url()} — ${title}`);
-    }
+  const state = loadState();
+  if (!state?.wsEndpoint) {
+    console.log('No active browser. Run `playwright-pool browser launch` first.');
+    process.exit(1);
   }
-  browser.disconnect();
+  try {
+    // Use CDP HTTP API — lightweight, no WebSocket, no flush issues
+    const resp = await fetch(`${state.wsEndpoint}/json/list`);
+    const tabs = await resp.json();
+    const pages = tabs.filter(t => t.type === 'page');
+    if (pages.length === 0) {
+      console.log('No open tabs.');
+    } else {
+      console.log(`${pages.length} open tab${pages.length === 1 ? '' : 's'}:`);
+      for (let i = 0; i < pages.length; i++) {
+        const url = pages[i].url;
+        const title = pages[i].title;
+        console.log(`  [${i}] ${url.length > 80 ? url.slice(0, 77) + '...' : url} — ${title}`);
+      }
+    }
+  } catch {
+    console.log('Browser not reachable. Clearing stale state.');
+    clearState();
+  }
 }
 
 // ─── click ───────────────────────────────────────────────────────
@@ -277,7 +329,8 @@ async function browserClick(args) {
   });
 
   console.log(`Clicked "${ref}" — ${page.url()}`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── hover ───────────────────────────────────────────────────────
@@ -296,7 +349,8 @@ async function browserHover(args) {
   });
 
   console.log(`Hovered "${ref}" — ${page.url()}`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── type ────────────────────────────────────────────────────────
@@ -323,7 +377,8 @@ async function browserType(args) {
   }
 
   console.log(`Typed "${text}" into ${selector}`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── key ─────────────────────────────────────────────────────────
@@ -346,7 +401,8 @@ async function browserKey(args) {
 
   await page.keyboard.press(key);
   console.log(`Pressed "${key}" — ${page.url()}`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── fill ────────────────────────────────────────────────────────
@@ -367,7 +423,8 @@ async function browserFill(args) {
   });
 
   console.log(`Filled "${selector}" with "${value}"`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── select ──────────────────────────────────────────────────────
@@ -397,7 +454,8 @@ async function browserSelect(args) {
 
   const selected = await page.selectOption(selector, options);
   console.log(`Selected ${JSON.stringify(selected)} in "${selector}"`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── resize ──────────────────────────────────────────────────────
@@ -435,7 +493,8 @@ async function browserResize(args) {
   const { browser, page } = await connectToActiveBrowser();
   await page.setViewportSize({ width, height });
   console.log(`Viewport resized to ${width}x${height}`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── upload ──────────────────────────────────────────────────────
@@ -460,7 +519,8 @@ async function browserUpload(args) {
   }
 
   console.log(`Uploaded ${filePaths.length} file${filePaths.length === 1 ? '' : 's'} to "${selector}"`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── dialog ──────────────────────────────────────────────────────
@@ -497,7 +557,8 @@ async function browserDialog(args) {
     console.log('No dialog appeared within timeout.');
   }
 
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }
 
 // ─── drag ────────────────────────────────────────────────────────
@@ -518,5 +579,6 @@ async function browserDrag(args) {
   });
 
   console.log(`Dragged "${source}" to "${target}"`);
-  browser.disconnect();
+  // Don't close — just exit. close() kills the server.
+  process.exit(0);
 }

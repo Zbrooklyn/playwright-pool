@@ -23,12 +23,13 @@ const AUDIT_CATEGORIES = {
            'z_index_map', 'scroll_behavior', 'print_layout', 'computed_styles'],
   forms: ['form_validation'],
   comprehensive: ['lighthouse'],
+  vision: ['vision_review'],
 };
 
 const ALL_AUDITS = Object.values(AUDIT_CATEGORIES).flat();
 
-// Map audit names to their handler functions
-const AUDIT_HANDLERS = {
+// Map audit names to their handler functions (exported for inspect-engine integration)
+export const AUDIT_HANDLERS = {
   meta: auditMeta,
   accessibility: auditAccessibility,
   color_contrast: auditColorContrast,
@@ -43,18 +44,19 @@ const AUDIT_HANDLERS = {
   broken_links: auditBrokenLinks,
   lighthouse: auditLighthouse,
   focus_order: auditFocusOrder,
-  interactive_states: auditStub,
-  spacing_consistency: auditStub,
-  z_index_map: auditStub,
+  interactive_states: auditInteractiveStates,
+  spacing_consistency: auditSpacingConsistency,
+  z_index_map: auditZIndexMap,
   loading_states: auditStub,
-  form_validation: auditStub,
+  form_validation: auditFormValidation,
   print_layout: auditStub,
   scroll_behavior: auditStub,
-  element_overlap: auditStub,
+  element_overlap: auditElementOverlap,
   mixed_content: auditMixedContent,
   third_party_scripts: auditThirdPartyScripts,
   cookie_compliance: auditCookieCompliance,
   computed_styles: auditStub,
+  vision_review: auditVisionReview,
 };
 
 // ─── Entry Point ─────────────────────────────────────────────────────
@@ -708,6 +710,471 @@ async function auditAccessibility(page, _context, _opts) {
           id: 'tabindex', impact: 'serious',
           description: 'Elements should not have tabindex > 0',
           target: el.tagName + '[tabindex=' + val + ']',
+        });
+      }
+    });
+
+    // 10. Landmark regions — page should have <main>
+    if (!document.querySelector('main, [role="main"]')) {
+      violations.push({
+        id: 'landmark-one-main', impact: 'moderate',
+        description: 'Document should have one main landmark',
+        target: 'html',
+      });
+    }
+
+    // 11. Content outside landmarks
+    const hasLandmarks = document.querySelector('header, nav, main, footer, aside, [role="banner"], [role="navigation"], [role="main"], [role="contentinfo"], [role="complementary"]');
+    if (!hasLandmarks) {
+      violations.push({
+        id: 'region', impact: 'moderate',
+        description: 'All page content should be contained within landmarks',
+        target: 'body',
+      });
+    }
+
+    // 12. Bypass blocks — skip nav or landmarks
+    const hasSkipLink = !!document.querySelector('a[href^="#"]:first-child, a[href^="#"][class*="skip"], a[href^="#"][class*="Skip"]');
+    const hasMainLandmark = !!document.querySelector('main, [role="main"]');
+    const hasNavLandmark = !!document.querySelector('nav, [role="navigation"]');
+    if (!hasSkipLink && !hasMainLandmark && !hasNavLandmark) {
+      violations.push({
+        id: 'bypass', impact: 'serious',
+        description: 'Page must have a mechanism to bypass repeated navigation (skip link or landmarks)',
+        target: 'html',
+      });
+    }
+
+    // 13. Empty headings
+    document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
+      if (!h.textContent.trim() && !h.querySelector('img[alt]')) {
+        violations.push({
+          id: 'empty-heading', impact: 'serious',
+          description: 'Heading elements must have discernible text',
+          target: h.tagName,
+        });
+      }
+    });
+
+    // 14. List structure — li must be inside ul/ol
+    document.querySelectorAll('li').forEach(li => {
+      const parent = li.parentElement;
+      if (parent && parent.tagName !== 'UL' && parent.tagName !== 'OL' && parent.tagName !== 'MENU') {
+        violations.push({
+          id: 'listitem', impact: 'serious',
+          description: '<li> must be contained in a <ul>, <ol>, or <menu>',
+          target: 'li',
+        });
+      }
+    });
+
+    // 15. iframe missing title
+    document.querySelectorAll('iframe, frame').forEach(f => {
+      if (!f.getAttribute('title') && !f.getAttribute('aria-label') && !f.getAttribute('aria-labelledby')) {
+        violations.push({
+          id: 'frame-title', impact: 'serious',
+          description: '<iframe>/<frame> must have an accessible name (title, aria-label, or aria-labelledby)',
+          target: f.tagName,
+        });
+      }
+    });
+
+    // 16. meta-viewport zoom disabled
+    const viewport = document.querySelector('meta[name="viewport"]');
+    if (viewport) {
+      const content = (viewport.getAttribute('content') || '').toLowerCase();
+      if (content.includes('user-scalable=no') || content.includes('user-scalable=0')) {
+        violations.push({
+          id: 'meta-viewport', impact: 'critical',
+          description: '<meta name="viewport"> must not disable text scaling (user-scalable=no)',
+          target: 'meta[name="viewport"]',
+        });
+      }
+      const maxScale = content.match(/maximum-scale\s*=\s*([\d.]+)/);
+      if (maxScale && parseFloat(maxScale[1]) < 2) {
+        violations.push({
+          id: 'meta-viewport', impact: 'critical',
+          description: '<meta name="viewport"> maximum-scale should be at least 2 for zoom accessibility',
+          target: 'meta[name="viewport"]',
+        });
+      }
+    }
+
+    // 17. aria-hidden with focusable children
+    document.querySelectorAll('[aria-hidden="true"]').forEach(el => {
+      const focusable = el.querySelectorAll('a[href], button, input, select, textarea, [tabindex]');
+      if (focusable.length > 0) {
+        violations.push({
+          id: 'aria-hidden-focus', impact: 'serious',
+          description: 'Elements with aria-hidden="true" must not contain focusable elements',
+          target: el.tagName,
+        });
+      }
+    });
+
+    // 18. ARIA required attributes
+    const requiredAriaAttrs = {
+      'checkbox': ['aria-checked'], 'combobox': ['aria-expanded'],
+      'heading': ['aria-level'], 'meter': ['aria-valuenow'],
+      'option': ['aria-selected'], 'radio': ['aria-checked'],
+      'scrollbar': ['aria-controls', 'aria-valuenow'],
+      'separator': [], 'slider': ['aria-valuenow'],
+      'switch': ['aria-checked'],
+    };
+    document.querySelectorAll('[role]').forEach(el => {
+      const role = el.getAttribute('role');
+      const required = requiredAriaAttrs[role];
+      if (required) {
+        for (const attr of required) {
+          if (!el.hasAttribute(attr)) {
+            violations.push({
+              id: 'aria-required-attr', impact: 'critical',
+              description: `Role "${role}" requires attribute "${attr}"`,
+              target: el.tagName + '[role=' + role + ']',
+            });
+          }
+        }
+      }
+    });
+
+    // 19. Table structure — data tables should have th elements
+    document.querySelectorAll('table').forEach(table => {
+      // Skip layout tables (no th, no caption, role=presentation)
+      if (table.getAttribute('role') === 'presentation' || table.getAttribute('role') === 'none') return;
+      const hasCaption = !!table.querySelector('caption');
+      const hasTh = !!table.querySelector('th');
+      const hasScope = !!table.querySelector('th[scope]');
+      const cells = table.querySelectorAll('td');
+      if (cells.length > 4 && !hasTh) {
+        violations.push({
+          id: 'table-th', impact: 'serious',
+          description: 'Data tables should have <th> header cells',
+          target: 'table' + (table.id ? '#' + table.id : ''),
+        });
+      }
+    });
+
+    // 20. javascript: hrefs (keyboard inaccessible navigation)
+    document.querySelectorAll('a[href^="javascript:"]').forEach(link => {
+      violations.push({
+        id: 'javascript-href', impact: 'serious',
+        description: 'Links with javascript: hrefs may not be keyboard accessible',
+        target: 'a[href="' + (link.getAttribute('href') || '').slice(0, 40) + '"]',
+      });
+    });
+
+    // 21. Video/audio without captions track
+    document.querySelectorAll('video').forEach(video => {
+      const hasTrack = !!video.querySelector('track[kind="captions"], track[kind="subtitles"]');
+      if (!hasTrack) {
+        violations.push({
+          id: 'video-caption', impact: 'serious',
+          description: 'Video elements should have a <track> with captions or subtitles',
+          target: 'video',
+        });
+      }
+    });
+    document.querySelectorAll('audio').forEach(audio => {
+      // Audio should have transcript link or track
+      const hasTrack = !!audio.querySelector('track');
+      if (!hasTrack) {
+        violations.push({
+          id: 'audio-caption', impact: 'serious',
+          description: 'Audio elements should have a text alternative or transcript',
+          target: 'audio',
+        });
+      }
+    });
+
+    // 22. List structure — ul/ol should only contain li/script/template
+    document.querySelectorAll('ul, ol').forEach(list => {
+      for (const child of list.children) {
+        if (child.tagName !== 'LI' && child.tagName !== 'SCRIPT' && child.tagName !== 'TEMPLATE') {
+          violations.push({
+            id: 'list', impact: 'serious',
+            description: `<${list.tagName.toLowerCase()}> contains non-<li> child: <${child.tagName.toLowerCase()}>`,
+            target: list.tagName.toLowerCase(),
+          });
+          break; // one per list is enough
+        }
+      }
+    });
+
+    // 23. ARIA valid attribute values
+    const validAriaValues = {
+      'aria-live': ['off', 'polite', 'assertive'],
+      'aria-haspopup': ['false', 'true', 'menu', 'listbox', 'tree', 'grid', 'dialog'],
+      'aria-autocomplete': ['none', 'inline', 'list', 'both'],
+      'aria-orientation': ['horizontal', 'vertical', 'undefined'],
+      'aria-sort': ['none', 'ascending', 'descending', 'other'],
+      'aria-dropeffect': ['none', 'copy', 'execute', 'link', 'move', 'popup'],
+      'aria-relevant': ['additions', 'all', 'removals', 'text'],
+      'aria-invalid': ['false', 'true', 'grammar', 'spelling'],
+      'aria-current': ['false', 'true', 'page', 'step', 'location', 'date', 'time'],
+    };
+    document.querySelectorAll('[aria-checked], [aria-selected], [aria-expanded], [aria-pressed], [aria-hidden], [aria-disabled], [aria-required]').forEach(el => {
+      const boolAttrs = ['aria-checked', 'aria-selected', 'aria-expanded', 'aria-pressed', 'aria-hidden', 'aria-disabled', 'aria-required'];
+      for (const attr of boolAttrs) {
+        const val = el.getAttribute(attr);
+        if (val !== null && val !== 'true' && val !== 'false' && val !== 'mixed') {
+          violations.push({
+            id: 'aria-valid-attr-value', impact: 'critical',
+            description: `Invalid value "${val}" for ${attr} (expected true/false)`,
+            target: el.tagName,
+          });
+        }
+      }
+    });
+    for (const [attr, validValues] of Object.entries(validAriaValues)) {
+      document.querySelectorAll(`[${attr}]`).forEach(el => {
+        const val = el.getAttribute(attr);
+        if (val && !validValues.includes(val.toLowerCase())) {
+          violations.push({
+            id: 'aria-valid-attr-value', impact: 'critical',
+            description: `Invalid value "${val}" for ${attr}`,
+            target: el.tagName,
+          });
+        }
+      });
+    }
+
+    // 24. Uninformative link text
+    const badLinkTexts = new Set(['click here', 'here', 'read more', 'more', 'learn more', 'link', 'click', 'this', 'go']);
+    document.querySelectorAll('a[href]').forEach(link => {
+      const text = (link.textContent || '').trim().toLowerCase();
+      if (badLinkTexts.has(text)) {
+        violations.push({
+          id: 'link-purpose', impact: 'serious',
+          description: `Uninformative link text: "${text}"`,
+          target: 'a',
+        });
+      }
+    });
+
+    // 25. Duplicate IDs
+    const idCounts = {};
+    document.querySelectorAll('[id]').forEach(el => {
+      const id = el.id;
+      if (id) {
+        idCounts[id] = (idCounts[id] || 0) + 1;
+      }
+    });
+    for (const [id, count] of Object.entries(idCounts)) {
+      if (count > 1) {
+        violations.push({
+          id: 'duplicate-id', impact: 'moderate',
+          description: `Duplicate id="${id}" found ${count} times`,
+          target: `[id="${id}"]`,
+        });
+      }
+    }
+
+    // 26. Select onchange context change (WCAG 3.2.2)
+    document.querySelectorAll('select[onchange]').forEach(sel => {
+      const handler = sel.getAttribute('onchange') || '';
+      if (handler.includes('location') || handler.includes('submit') || handler.includes('window') || handler.includes('navigate')) {
+        violations.push({
+          id: 'select-onchange', impact: 'serious',
+          description: 'Select element changes context on input without warning (onchange navigates/submits)',
+          target: 'select',
+        });
+      }
+    });
+
+    // 27. Decorative images with excessive alt text
+    const decorativePatterns = /spacer|border|line|gradient|blank|pixel|dot|separator|divider|bg|background/i;
+    document.querySelectorAll('img[alt]').forEach(img => {
+      const alt = img.getAttribute('alt') || '';
+      const src = img.getAttribute('src') || '';
+      const rect = img.getBoundingClientRect();
+      // Small images (likely decorative) with non-empty alt
+      if (alt.length > 0 && (rect.width <= 10 || rect.height <= 10) && !img.closest('a')) {
+        violations.push({
+          id: 'decorative-img-alt', impact: 'moderate',
+          description: `Likely decorative image (${Math.round(rect.width)}x${Math.round(rect.height)}px) has alt text: "${alt.slice(0, 30)}"`,
+          target: 'img',
+        });
+      }
+      // Images with filename-like alt text
+      if (decorativePatterns.test(src) && alt.length > 0 && alt !== '') {
+        violations.push({
+          id: 'decorative-img-alt', impact: 'moderate',
+          description: `Image with decorative filename has non-empty alt: "${alt.slice(0, 30)}"`,
+          target: 'img',
+        });
+      }
+    });
+
+    // 28. Dropdown nav menus — submenus visible only on hover without ARIA
+    document.querySelectorAll('nav ul ul, [role="navigation"] ul ul, .nav ul ul, #nav ul ul, #menu ul, ul.menu ul, ul[id*="menu"] ul, ul[class*="menu"] ul, ul[id*="nav"] ul, ul[class*="nav"] ul').forEach(submenu => {
+      const parent = submenu.parentElement;
+      if (!parent) return;
+      const trigger = parent.querySelector('a, button');
+      if (trigger && !trigger.getAttribute('aria-expanded') && !trigger.getAttribute('aria-haspopup')) {
+        const style = window.getComputedStyle(submenu);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0' || parseFloat(style.maxHeight) === 0) {
+          violations.push({
+            id: 'nav-submenu-hover-only', impact: 'serious',
+            description: 'Dropdown submenu hidden by default without aria-expanded/aria-haspopup on trigger',
+            target: 'ul > li > ul',
+          });
+        }
+      }
+    });
+
+    // 29. Auto-playing carousel/slideshow without pause control
+    const carouselSelectors = '[class*="carousel"], [class*="slider"], [class*="slideshow"], [id*="carousel"], [id*="slider"], [data-ride="carousel"]';
+    document.querySelectorAll(carouselSelectors).forEach(el => {
+      const hasPause = el.querySelector('[class*="pause"], button[aria-label*="pause"], button[aria-label*="stop"], [class*="stop"]');
+      const hasAriaLive = el.getAttribute('aria-live');
+      if (!hasPause) {
+        violations.push({
+          id: 'carousel-no-pause', impact: 'serious',
+          description: 'Carousel/slideshow has no visible pause control (WCAG 2.2.2)',
+          target: el.tagName + (el.id ? '#' + el.id : '') + (el.className ? '.' + el.className.split(' ')[0] : ''),
+        });
+      }
+      if (!hasAriaLive) {
+        violations.push({
+          id: 'carousel-no-aria', impact: 'serious',
+          description: 'Carousel missing aria-live attribute for screen reader updates',
+          target: el.tagName + (el.id ? '#' + el.id : ''),
+        });
+      }
+    });
+
+    // 30. Modal/dialog without proper ARIA
+    document.querySelectorAll('[class*="modal"], [class*="dialog"], [class*="lightbox"], [id*="modal"], [id*="dialog"], [id*="lightbox"]').forEach(el => {
+      const role = el.getAttribute('role');
+      if (role !== 'dialog' && role !== 'alertdialog') {
+        violations.push({
+          id: 'modal-no-role', impact: 'serious',
+          description: 'Modal/dialog element missing role="dialog" or role="alertdialog"',
+          target: el.tagName + (el.id ? '#' + el.id : '') + (el.className ? '.' + el.className.split(' ')[0] : ''),
+        });
+      }
+      if (!el.getAttribute('aria-modal') && !el.getAttribute('aria-label') && !el.getAttribute('aria-labelledby')) {
+        violations.push({
+          id: 'modal-no-label', impact: 'serious',
+          description: 'Modal/dialog missing aria-modal and/or aria-label/aria-labelledby',
+          target: el.tagName + (el.id ? '#' + el.id : ''),
+        });
+      }
+    });
+
+    // 31. CAPTCHA without text alternative
+    document.querySelectorAll('img').forEach(img => {
+      const src = (img.getAttribute('src') || '').toLowerCase();
+      const alt = (img.getAttribute('alt') || '').toLowerCase();
+      const cls = (img.className || '').toLowerCase();
+      const id = (img.id || '').toLowerCase();
+      if (src.includes('captcha') || alt.includes('captcha') || cls.includes('captcha') || id.includes('captcha')) {
+        const hasAlt = img.getAttribute('alt') && img.getAttribute('alt').trim().length > 5;
+        if (!hasAlt) {
+          violations.push({
+            id: 'captcha-no-alt', impact: 'critical',
+            description: 'CAPTCHA image without accessible alternative',
+            target: 'img' + (img.id ? '#' + img.id : ''),
+          });
+        }
+      }
+    });
+
+    // 32. Layout tables (tables used for layout without role="presentation")
+    document.querySelectorAll('table').forEach(table => {
+      if (table.getAttribute('role') === 'presentation' || table.getAttribute('role') === 'none') return;
+      const hasTh = !!table.querySelector('th');
+      const hasCaption = !!table.querySelector('caption');
+      const hasSummary = !!table.getAttribute('summary');
+      const hasHeaders = !!table.querySelector('td[headers]');
+      const cells = table.querySelectorAll('td');
+      // Heuristic: table with no th, no caption, no summary, and nested tables = likely layout
+      const hasNestedTable = !!table.querySelector('table');
+      if (!hasTh && !hasCaption && !hasSummary && cells.length > 2 && hasNestedTable) {
+        violations.push({
+          id: 'layout-table', impact: 'serious',
+          description: 'Table appears to be used for layout (nested tables, no th/caption) — add role="presentation"',
+          target: 'table',
+        });
+      }
+    });
+
+    // 33. Visual headings without semantic markup (bold/large text that looks like headings)
+    document.querySelectorAll('p, div, span, td').forEach(el => {
+      if (el.closest('h1, h2, h3, h4, h5, h6')) return;
+      const style = window.getComputedStyle(el);
+      const fontSize = parseFloat(style.fontSize);
+      const fontWeight = parseInt(style.fontWeight);
+      const text = (el.textContent || '').trim();
+      // Bold text > 18px with short content and no child headings = likely visual heading
+      if (fontSize >= 18 && fontWeight >= 700 && text.length > 0 && text.length < 100
+          && !el.querySelector('h1, h2, h3, h4, h5, h6, a, img, input, button')
+          && el.children.length === 0) {
+        violations.push({
+          id: 'visual-heading', impact: 'moderate',
+          description: `Text appears to be a visual heading but lacks semantic markup: "${text.slice(0, 40)}"`,
+          target: el.tagName,
+        });
+      }
+    });
+
+    // 34. onfocus handlers that change context (WCAG 3.2.1)
+    document.querySelectorAll('[onfocus]').forEach(el => {
+      const handler = el.getAttribute('onfocus') || '';
+      if (handler.includes('location') || handler.includes('submit') || handler.includes('window.open')
+          || handler.includes('blur') || handler.includes('this.blur')) {
+        violations.push({
+          id: 'onfocus-context-change', impact: 'serious',
+          description: 'Element changes context or removes focus on focus event',
+          target: el.tagName,
+        });
+      }
+    });
+
+    // 35. Form error identification (WCAG 3.3.1) — errors not associated with specific fields
+    document.querySelectorAll('.error, .errors, [class*="error-message"], [role="alert"]').forEach(el => {
+      const text = (el.textContent || '').trim();
+      if (text.length > 0) {
+        const isNearInput = el.closest('label, .form-group, .field') || el.nextElementSibling?.matches?.('input, select, textarea');
+        const hasAriaDescribedby = document.querySelector(`[aria-describedby="${el.id}"]`);
+        if (!isNearInput && !hasAriaDescribedby && !el.querySelector('a[href]')) {
+          violations.push({
+            id: 'error-not-associated', impact: 'serious',
+            description: 'Error message not associated with a specific form field',
+            target: el.tagName + (el.className ? '.' + el.className.split(' ')[0] : ''),
+          });
+        }
+      }
+    });
+
+    // 36. Abbreviations without expansion (WCAG 3.1.4)
+    document.querySelectorAll('th, td, dt, h1, h2, h3, h4, h5, h6').forEach(el => {
+      const text = (el.textContent || '').trim();
+      // Short all-caps or common abbreviation patterns without <abbr> wrapping
+      if (text.length >= 2 && text.length <= 6 && /^[A-Z][A-Za-z]*$/.test(text) && text === text.replace(/[a-z]/g, '').length >= 2 ? text : '') {
+        // More reliable: check if it's all uppercase letters
+      }
+      if (text.length >= 2 && text.length <= 6 && text === text.toUpperCase() && /^[A-Z]{2,6}$/.test(text)) {
+        const hasAbbr = el.querySelector('abbr');
+        if (!hasAbbr) {
+          violations.push({
+            id: 'abbreviation-unexpanded', impact: 'moderate',
+            description: `Abbreviation "${text}" not wrapped in <abbr> with expansion`,
+            target: el.tagName,
+          });
+        }
+      }
+    });
+
+    // 37. Focusable elements inside select onchange (broader 3.2.2 check)
+    document.querySelectorAll('select[onchange]').forEach(sel => {
+      const handler = sel.getAttribute('onchange') || '';
+      // Any onchange on select that does more than cosmetic changes
+      if (handler && !violations.find(v => v.id === 'select-onchange')) {
+        violations.push({
+          id: 'select-onchange', impact: 'serious',
+          description: 'Select element has onchange handler — may change context without warning',
+          target: 'select',
         });
       }
     });
@@ -2782,4 +3249,562 @@ export async function runVisualAudit(page, _context, opts = {}) {
   lines.push(`  Minor: ${severityCounts.minor} (${allIssues.filter(i => i.severity === 'minor').map(i => i.id).filter((v, i, a) => a.indexOf(v) === i).join(', ') || 'none'})`);
 
   return { issues: allIssues, text: lines.join('\n'), sections };
+}
+
+// ─── Form Validation Audit ──────────────────────────────────────────
+
+async function auditFormValidation(page, _context, _opts) {
+  const results = await page.evaluate(() => {
+    const issues = [];
+    const forms = document.querySelectorAll('form');
+
+    forms.forEach((form, fi) => {
+      const formId = form.id || form.name || `form-${fi}`;
+      // Check for fieldset/legend on radio/checkbox groups
+      const radios = form.querySelectorAll('input[type="radio"]');
+      const checkboxes = form.querySelectorAll('input[type="checkbox"]');
+      const radioNames = new Set();
+      radios.forEach(r => r.name && radioNames.add(r.name));
+      radioNames.forEach(name => {
+        const group = form.querySelectorAll(`input[name="${name}"]`);
+        const inFieldset = group[0] && group[0].closest('fieldset');
+        if (!inFieldset && group.length > 1) {
+          issues.push({ type: 'no-fieldset-radio', form: formId, name });
+        }
+      });
+      const checkNames = new Set();
+      checkboxes.forEach(c => c.name && checkNames.add(c.name));
+      checkNames.forEach(name => {
+        const group = form.querySelectorAll(`input[name="${name}"]`);
+        const inFieldset = group[0] && group[0].closest('fieldset');
+        if (!inFieldset && group.length > 1) {
+          issues.push({ type: 'no-fieldset-checkbox', form: formId, name });
+        }
+      });
+
+      // Check for required fields without aria-required or required attr
+      form.querySelectorAll('input, select, textarea').forEach(input => {
+        if (input.type === 'hidden' || input.type === 'submit' || input.type === 'button') return;
+        // If visually marked as required (e.g., asterisk in label) but no HTML required
+        const label = input.id && document.querySelector(`label[for="${input.id}"]`);
+        if (label && label.textContent.includes('*') && !input.required && !input.getAttribute('aria-required')) {
+          issues.push({ type: 'visual-required-no-attr', form: formId, field: input.name || input.id || input.type });
+        }
+      });
+
+      // Check for empty fieldset legends
+      form.querySelectorAll('fieldset').forEach(fs => {
+        const legend = fs.querySelector('legend');
+        if (!legend || !legend.textContent.trim()) {
+          issues.push({ type: 'empty-legend', form: formId });
+        }
+      });
+    });
+
+    // Standalone inputs outside forms
+    const standaloneInputs = document.querySelectorAll('input:not(form input), select:not(form select), textarea:not(form textarea)');
+    const outsideForm = [];
+    standaloneInputs.forEach(input => {
+      if (input.type === 'hidden') return;
+      if (!input.closest('form')) {
+        outsideForm.push(input.tagName + (input.type ? '[' + input.type + ']' : ''));
+      }
+    });
+
+    return { issues, formCount: forms.length, outsideForm };
+  });
+
+  const issues = [];
+  const lines = [
+    `Form Validation Audit`,
+    `URL: ${await page.url()}`,
+    `Forms found: ${results.formCount}`,
+    `Inputs outside forms: ${results.outsideForm.length}`,
+    '',
+  ];
+
+  for (const issue of results.issues) {
+    if (issue.type === 'no-fieldset-radio') {
+      lines.push(`  FAIL: Radio group "${issue.name}" in ${issue.form} not wrapped in <fieldset>`);
+      issues.push({ id: 'fieldset-radio', severity: 'serious', msg: `Radio group "${issue.name}" missing fieldset` });
+    } else if (issue.type === 'no-fieldset-checkbox') {
+      lines.push(`  FAIL: Checkbox group "${issue.name}" in ${issue.form} not wrapped in <fieldset>`);
+      issues.push({ id: 'fieldset-checkbox', severity: 'serious', msg: `Checkbox group "${issue.name}" missing fieldset` });
+    } else if (issue.type === 'visual-required-no-attr') {
+      lines.push(`  WARN: Field "${issue.field}" appears required (*) but lacks required/aria-required attr`);
+      issues.push({ id: 'required-attr', severity: 'moderate', msg: `Field "${issue.field}" visually required but missing attribute` });
+    } else if (issue.type === 'empty-legend') {
+      lines.push(`  FAIL: <fieldset> in ${issue.form} has empty or missing <legend>`);
+      issues.push({ id: 'empty-legend', severity: 'serious', msg: `Fieldset missing legend in ${issue.form}` });
+    }
+  }
+
+  if (results.outsideForm.length > 0) {
+    lines.push(`  INFO: ${results.outsideForm.length} input(s) outside <form>: ${results.outsideForm.slice(0, 5).join(', ')}`);
+  }
+
+  return { issues, text: lines.join('\n') };
+}
+
+// ─── Interactive States Audit ───────────────────────────────────────
+
+async function auditInteractiveStates(page, _context, _opts) {
+  const results = await page.evaluate(() => {
+    const issues = [];
+
+    // Check links with javascript: hrefs
+    document.querySelectorAll('a[href^="javascript:"]').forEach(link => {
+      issues.push({
+        type: 'javascript-href',
+        text: (link.textContent || '').trim().slice(0, 40),
+        href: (link.getAttribute('href') || '').slice(0, 50),
+      });
+    });
+
+    // Check for onclick without keyboard equivalent
+    document.querySelectorAll('[onclick]').forEach(el => {
+      if (el.tagName === 'A' || el.tagName === 'BUTTON' || el.tagName === 'INPUT') return;
+      const hasKeyHandler = el.hasAttribute('onkeydown') || el.hasAttribute('onkeyup') || el.hasAttribute('onkeypress');
+      const hasRole = el.getAttribute('role');
+      const hasTabindex = el.hasAttribute('tabindex');
+      if (!hasKeyHandler && !hasRole && !hasTabindex) {
+        issues.push({
+          type: 'onclick-no-keyboard',
+          tag: el.tagName,
+          text: (el.textContent || '').trim().slice(0, 40),
+        });
+      }
+    });
+
+    // Check onmouseover without onfocus
+    document.querySelectorAll('[onmouseover]').forEach(el => {
+      if (!el.hasAttribute('onfocus')) {
+        issues.push({
+          type: 'mouseover-no-focus',
+          tag: el.tagName,
+          text: (el.textContent || '').trim().slice(0, 40),
+        });
+      }
+    });
+
+    // Check links that look like buttons (role mismatch)
+    document.querySelectorAll('a[href="#"], a[href=""], a[href^="javascript:void"]').forEach(link => {
+      if (!link.getAttribute('role')) {
+        issues.push({
+          type: 'link-as-button',
+          text: (link.textContent || '').trim().slice(0, 40),
+        });
+      }
+    });
+
+    return issues;
+  });
+
+  const issues = [];
+  const lines = [
+    `Interactive States Audit`,
+    `URL: ${await page.url()}`,
+    '',
+  ];
+
+  const byType = {};
+  for (const r of results) {
+    if (!byType[r.type]) byType[r.type] = [];
+    byType[r.type].push(r);
+  }
+
+  if (byType['javascript-href']) {
+    lines.push(`  javascript: hrefs: ${byType['javascript-href'].length}`);
+    for (const r of byType['javascript-href'].slice(0, 5)) {
+      lines.push(`    "${r.text}" → ${r.href}`);
+    }
+    issues.push({ id: 'javascript-href', severity: 'serious', msg: `${byType['javascript-href'].length} link(s) use javascript: hrefs` });
+  }
+  if (byType['onclick-no-keyboard']) {
+    lines.push(`  onclick without keyboard: ${byType['onclick-no-keyboard'].length}`);
+    for (const r of byType['onclick-no-keyboard'].slice(0, 5)) {
+      lines.push(`    <${r.tag.toLowerCase()}> "${r.text}"`);
+    }
+    issues.push({ id: 'onclick-no-keyboard', severity: 'serious', msg: `${byType['onclick-no-keyboard'].length} element(s) have onclick but no keyboard handler` });
+  }
+  if (byType['mouseover-no-focus']) {
+    lines.push(`  onmouseover without onfocus: ${byType['mouseover-no-focus'].length}`);
+    issues.push({ id: 'mouseover-no-focus', severity: 'serious', msg: `${byType['mouseover-no-focus'].length} element(s) have hover but no focus equivalent` });
+  }
+  if (byType['link-as-button']) {
+    lines.push(`  Links used as buttons (href="#" or javascript:void): ${byType['link-as-button'].length}`);
+    issues.push({ id: 'link-as-button', severity: 'moderate', msg: `${byType['link-as-button'].length} link(s) behave as buttons without role="button"` });
+  }
+
+  if (results.length === 0) {
+    lines.push('  No interactive state issues detected.');
+  }
+
+  return { issues, text: lines.join('\n') };
+}
+
+// ─── Spacing Consistency Audit ──────────────────────────────────────
+
+async function auditSpacingConsistency(page, _context, _opts) {
+  const results = await page.evaluate(() => {
+    const spacingValues = { margin: {}, padding: {} };
+    const elements = document.querySelectorAll('div, section, article, main, aside, header, footer, nav, p, h1, h2, h3, h4, h5, h6, ul, ol, li');
+    const limit = Math.min(elements.length, 200);
+
+    for (let i = 0; i < limit; i++) {
+      const el = elements[i];
+      const style = window.getComputedStyle(el);
+      for (const side of ['Top', 'Right', 'Bottom', 'Left']) {
+        const mv = parseFloat(style['margin' + side]) || 0;
+        const pv = parseFloat(style['padding' + side]) || 0;
+        if (mv > 0) spacingValues.margin[mv] = (spacingValues.margin[mv] || 0) + 1;
+        if (pv > 0) spacingValues.padding[pv] = (spacingValues.padding[pv] || 0) + 1;
+      }
+    }
+
+    return { margin: spacingValues.margin, padding: spacingValues.padding, checked: limit };
+  });
+
+  const issues = [];
+  const lines = [
+    `Spacing Consistency Audit`,
+    `URL: ${await page.url()}`,
+    `Elements checked: ${results.checked}`,
+    '',
+  ];
+
+  // Check if spacing follows a grid system (multiples of 4 or 8)
+  const allValues = new Set([...Object.keys(results.margin), ...Object.keys(results.padding)].map(Number));
+  const nonGridValues = [...allValues].filter(v => v > 0 && v % 4 !== 0 && v % 8 !== 0);
+  const gridValues = [...allValues].filter(v => v > 0 && (v % 4 === 0 || v % 8 === 0));
+
+  lines.push(`  Unique margin values: ${Object.keys(results.margin).length}`);
+  lines.push(`  Unique padding values: ${Object.keys(results.padding).length}`);
+  lines.push(`  Values on 4/8px grid: ${gridValues.length}`);
+  lines.push(`  Values off grid: ${nonGridValues.length}`);
+
+  if (nonGridValues.length > gridValues.length) {
+    lines.push(`  WARNING: Spacing does not follow a consistent grid system`);
+    lines.push(`  Off-grid values: ${nonGridValues.slice(0, 10).join(', ')}px`);
+    issues.push({ id: 'spacing-no-grid', severity: 'moderate', msg: 'Spacing does not follow a 4/8px grid system' });
+  }
+
+  const uniqueTotal = Object.keys(results.margin).length + Object.keys(results.padding).length;
+  if (uniqueTotal > 20) {
+    lines.push(`  WARNING: ${uniqueTotal} unique spacing values — may indicate inconsistent design`);
+    issues.push({ id: 'spacing-inconsistent', severity: 'minor', msg: `${uniqueTotal} unique spacing values detected` });
+  }
+
+  // Top margin values
+  const topMargins = Object.entries(results.margin).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  lines.push('');
+  lines.push('  Top margin values:');
+  for (const [val, count] of topMargins) {
+    lines.push(`    ${val}px — used ${count}x`);
+  }
+
+  const topPaddings = Object.entries(results.padding).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  lines.push('  Top padding values:');
+  for (const [val, count] of topPaddings) {
+    lines.push(`    ${val}px — used ${count}x`);
+  }
+
+  return { issues, text: lines.join('\n') };
+}
+
+// ─── Z-Index Map Audit ──────────────────────────────────────────────
+
+async function auditZIndexMap(page, _context, _opts) {
+  const results = await page.evaluate(() => {
+    const entries = [];
+    const all = document.querySelectorAll('*');
+    for (let i = 0; i < all.length; i++) {
+      const el = all[i];
+      const style = window.getComputedStyle(el);
+      const z = style.zIndex;
+      if (z !== 'auto' && z !== '0') {
+        const rect = el.getBoundingClientRect();
+        entries.push({
+          tag: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.className ? '.' + (el.className.split?.(' ')[0] || '') : ''),
+          zIndex: parseInt(z),
+          position: style.position,
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          top: Math.round(rect.top),
+        });
+      }
+    }
+    return entries.sort((a, b) => b.zIndex - a.zIndex);
+  });
+
+  const issues = [];
+  const lines = [
+    `Z-Index Map`,
+    `URL: ${await page.url()}`,
+    `Elements with z-index: ${results.length}`,
+    '',
+  ];
+
+  for (const entry of results.slice(0, 20)) {
+    lines.push(`  z-index: ${entry.zIndex} — <${entry.tag}> (${entry.position}, ${entry.width}x${entry.height}px)`);
+  }
+  if (results.length > 20) {
+    lines.push(`  ... and ${results.length - 20} more`);
+  }
+
+  // Check for excessively high z-index
+  const high = results.filter(e => e.zIndex > 9999);
+  if (high.length > 0) {
+    lines.push(`\n  WARNING: ${high.length} element(s) with z-index > 9999`);
+    issues.push({ id: 'z-index-high', severity: 'minor', msg: `${high.length} elements with very high z-index` });
+  }
+
+  // Check for potential stacking conflicts
+  const byZ = {};
+  for (const e of results) {
+    if (!byZ[e.zIndex]) byZ[e.zIndex] = [];
+    byZ[e.zIndex].push(e);
+  }
+  const conflicts = Object.entries(byZ).filter(([, els]) => els.length > 1 && els.some(e => e.width > 0));
+  if (conflicts.length > 0) {
+    lines.push(`  Potential stacking conflicts: ${conflicts.length} z-index value(s) shared by multiple elements`);
+  }
+
+  return { issues, text: lines.join('\n') };
+}
+
+// ─── Element Overlap Audit ──────────────────────────────────────────
+
+async function auditElementOverlap(page, _context, _opts) {
+  const results = await page.evaluate(() => {
+    const interactives = document.querySelectorAll('a[href], button, input, select, textarea, [role="button"], [role="link"]');
+    const rects = [];
+    interactives.forEach(el => {
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      rects.push({
+        tag: el.tagName.toLowerCase() + (el.id ? '#' + el.id : ''),
+        text: (el.textContent || '').trim().slice(0, 30),
+        top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom,
+        width: Math.round(rect.width), height: Math.round(rect.height),
+      });
+    });
+
+    // Check for overlapping interactive elements
+    const overlaps = [];
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) {
+        const a = rects[i], b = rects[j];
+        if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) {
+          const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+          const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+          const overlapArea = overlapX * overlapY;
+          const minArea = Math.min(a.width * a.height, b.width * b.height);
+          if (overlapArea > minArea * 0.1) { // >10% overlap
+            overlaps.push({ a: a.tag + ' "' + a.text + '"', b: b.tag + ' "' + b.text + '"', area: Math.round(overlapArea) });
+          }
+        }
+      }
+    }
+
+    return { total: rects.length, overlaps };
+  });
+
+  const issues = [];
+  const lines = [
+    `Element Overlap Audit`,
+    `URL: ${await page.url()}`,
+    `Interactive elements checked: ${results.total}`,
+    `Overlapping pairs: ${results.overlaps.length}`,
+    '',
+  ];
+
+  for (const o of results.overlaps.slice(0, 10)) {
+    lines.push(`  OVERLAP: ${o.a} ↔ ${o.b} (${o.area}px²)`);
+    issues.push({ id: 'element-overlap', severity: 'serious', msg: `${o.a} overlaps ${o.b}` });
+  }
+  if (results.overlaps.length > 10) {
+    lines.push(`  ... and ${results.overlaps.length - 10} more`);
+  }
+  if (results.overlaps.length === 0) {
+    lines.push('  No overlapping interactive elements detected.');
+  }
+
+  return { issues, text: lines.join('\n') };
+}
+
+// ─── Vision Review Audit ────────────────────────────────────────────
+// Collects data the programmatic audit can't determine and outputs
+// a structured prompt for vision model analysis.
+
+async function auditVisionReview(page, context, _opts) {
+  const url = await page.url();
+  const screenshotDir = context?.screenshotDir;
+
+  // Collect DOM context for the vision model
+  const domContext = await page.evaluate(() => {
+    const data = {};
+
+    // Links styling — check if any body links lack underline
+    data.linkStyles = [];
+    document.querySelectorAll('a[href]').forEach(link => {
+      const style = window.getComputedStyle(link);
+      const parent = link.parentElement;
+      const parentStyle = parent ? window.getComputedStyle(parent) : null;
+      const rect = link.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      if (style.display === 'none' || style.visibility === 'hidden') return;
+      const isInNav = !!link.closest('nav, [role="navigation"], header, .nav, #nav, .menu, #menu');
+      data.linkStyles.push({
+        text: (link.textContent || '').trim().slice(0, 40),
+        color: style.color,
+        textDecoration: style.textDecorationLine || style.textDecoration,
+        fontWeight: style.fontWeight,
+        parentColor: parentStyle ? parentStyle.color : null,
+        isInNav,
+        href: (link.getAttribute('href') || '').slice(0, 50),
+      });
+    });
+
+    // Images that might be images of text
+    data.suspectImagesOfText = [];
+    document.querySelectorAll('img').forEach(img => {
+      const alt = (img.getAttribute('alt') || '').trim();
+      const src = (img.getAttribute('src') || '');
+      const rect = img.getBoundingClientRect();
+      const isLogo = /logo/i.test(src) || /logo/i.test(img.className) || /logo/i.test(img.id)
+                   || !!img.closest('.logo, #logo, [class*="logo"], [id*="logo"], .brand, .site-title');
+      const isInHeading = !!img.closest('h1, h2, h3, h4, h5, h6');
+      const isNav = !!img.closest('nav, [role="navigation"]');
+      const hasTextAlt = alt.length > 2 && !/\.(?:jpg|png|gif|svg|webp)/i.test(alt);
+      if ((isLogo || isInHeading || isNav || hasTextAlt) && rect.width > 20 && rect.height > 10) {
+        data.suspectImagesOfText.push({
+          src: src.split('/').pop().slice(0, 50),
+          alt,
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          isLogo,
+          context: isNav ? 'navigation' : isLogo ? 'logo' : isInHeading ? 'heading' : 'content',
+        });
+      }
+    });
+
+    // Video/audio elements
+    data.mediaElements = [];
+    document.querySelectorAll('video, audio').forEach(el => {
+      const hasCaptions = !!el.querySelector('track[kind="captions"], track[kind="subtitles"]');
+      const hasAudioDesc = !!el.querySelector('track[kind="descriptions"]');
+      data.mediaElements.push({
+        tag: el.tagName.toLowerCase(),
+        hasCaptions,
+        hasAudioDesc,
+        src: (el.getAttribute('src') || el.querySelector('source')?.getAttribute('src') || '').slice(0, 60),
+      });
+    });
+
+    // Required fields
+    data.requiredFields = [];
+    document.querySelectorAll('input, select, textarea').forEach(input => {
+      if (input.type === 'hidden') return;
+      const label = input.id && document.querySelector(`label[for="${input.id}"]`);
+      const labelText = label ? label.textContent : '';
+      data.requiredFields.push({
+        type: input.type || 'text',
+        name: input.name || input.id || '',
+        required: input.required || input.getAttribute('aria-required') === 'true',
+        labelHasAsterisk: labelText.includes('*'),
+        labelText: labelText.trim().slice(0, 40),
+      });
+    });
+
+    data.hasCarousel = !!document.querySelector('[class*="carousel"], [class*="slider"], [class*="slideshow"], [id*="carousel"], [id*="slider"]');
+    data.hasModal = !!document.querySelector('[class*="modal"], [class*="dialog"], [class*="lightbox"], [id*="modal"], [id*="dialog"]');
+
+    return data;
+  });
+
+  // Analyze and build report
+  const issues = [];
+  const lines = [
+    `Vision Review Audit`,
+    `URL: ${url}`,
+    '',
+  ];
+
+  // Check 1: Links distinguished only by color
+  const bodyLinks = domContext.linkStyles.filter(l => !l.isInNav);
+  const colorOnlyLinks = bodyLinks.filter(l => {
+    const noUnderline = !l.textDecoration || l.textDecoration === 'none';
+    const sameWeight = l.fontWeight === '400' || l.fontWeight === 'normal';
+    const differentColor = l.color !== l.parentColor;
+    return noUnderline && sameWeight && differentColor;
+  });
+
+  if (colorOnlyLinks.length > 0) {
+    lines.push(`[WCAG 1.4.1] Links relying on color alone: ${colorOnlyLinks.length}`);
+    for (const l of colorOnlyLinks.slice(0, 5)) {
+      lines.push(`  "${l.text}" — color: ${l.color}, decoration: ${l.textDecoration}`);
+    }
+    issues.push({ id: 'color-only-links', severity: 'serious',
+      msg: `${colorOnlyLinks.length} link(s) rely on color alone (no underline, same weight as surrounding text)` });
+    lines.push('');
+  }
+
+  // Check 2: Images of text
+  if (domContext.suspectImagesOfText.length > 0) {
+    lines.push(`[WCAG 1.4.5] Suspect images of text: ${domContext.suspectImagesOfText.length}`);
+    for (const img of domContext.suspectImagesOfText) {
+      lines.push(`  ${img.context}: "${img.alt || img.src}" (${img.width}x${img.height}px)`);
+    }
+    issues.push({ id: 'images-of-text', severity: 'moderate',
+      msg: `${domContext.suspectImagesOfText.length} image(s) may contain text that could be rendered as HTML` });
+    lines.push('');
+  }
+
+  // Check 3: Media without audio description
+  const mediaWithoutDesc = domContext.mediaElements.filter(m => !m.hasAudioDesc);
+  if (mediaWithoutDesc.length > 0) {
+    lines.push(`[WCAG 1.2.5] Media without audio description: ${mediaWithoutDesc.length}`);
+    for (const m of mediaWithoutDesc) {
+      lines.push(`  <${m.tag}> — captions: ${m.hasCaptions ? 'yes' : 'no'}, audio-desc: no`);
+    }
+    issues.push({ id: 'no-audio-description', severity: 'serious',
+      msg: `${mediaWithoutDesc.length} media element(s) missing audio description` });
+    lines.push('');
+  }
+
+  // Screenshots for vision model
+  lines.push(`═══ VISION PROMPT ═══`);
+  lines.push('');
+  lines.push(generateVisionPrompt(url, domContext, colorOnlyLinks));
+
+  if (screenshotDir) {
+    lines.push('');
+    lines.push(`Screenshots: ${screenshotDir}`);
+  }
+
+  return { issues, text: lines.join('\n'), visionPrompt: generateVisionPrompt(url, domContext, colorOnlyLinks), domContext };
+}
+
+function generateVisionPrompt(url, domContext, colorOnlyLinks) {
+  return [
+    `WCAG accessibility expert: analyze screenshots of ${url}`,
+    '',
+    `Programmatic findings:`,
+    `- ${colorOnlyLinks?.length || 0} body links with no underline (color-only): ${(colorOnlyLinks || []).slice(0, 3).map(l => '"' + l.text + '"').join(', ')}`,
+    `- ${domContext.suspectImagesOfText.length} suspect images of text: ${domContext.suspectImagesOfText.map(i => '"' + (i.alt || i.src) + '"').join(', ')}`,
+    `- ${domContext.mediaElements.filter(m => !m.hasAudioDesc).length} media without audio description`,
+    `- Carousel: ${domContext.hasCarousel ? 'yes' : 'no'}, Modal: ${domContext.hasModal ? 'yes' : 'no'}`,
+    '',
+    `Verify each:`,
+    `1. [1.4.1] Are links in body text distinguishable WITHOUT color?`,
+    `2. [1.4.1] Are required fields indicated WITHOUT color?`,
+    `3. [1.4.5] Is the logo text-as-image? Carousel text baked in?`,
+    `4. [1.2.5] Does video show visual-only content needing audio description?`,
+    `5. [2.4.7] Do nav links show focus/hover states beyond color?`,
+    '',
+    `Return: PASS/FAIL for each, evidence, confidence.`,
+  ].join('\n');
 }
