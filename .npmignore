@@ -8,7 +8,20 @@ autoresearch-log.jsonl
 playwright-audit/
 *.output
 
+# Screenshots and temp artifacts
+*.png
+*.jpg
+*.jpeg
+screenshot-*.png
+snap-*.md
+tabs.json
+tab-check*
+blog-editor-audit/
+w3c-bad-audit/
+playwright-inspect/
+
 # Development files
 CLAUDE.md
 ROADMAP.md
 .gitignore
+audit-tools-b.js
