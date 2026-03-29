@@ -15,6 +15,7 @@ import path from 'path';
 import { chromium, devices } from 'playwright';
 import { createRequire } from 'module';
 import { getSchemas as getAuditBSchemas, handleAuditTool as handleAuditToolB, isAuditToolB } from './audit-tools-b.js';
+import { AUDIT_HANDLERS } from './cli-commands/audit.js';
 
 // --- Resolve internal Playwright MCP modules ---
 // playwright/lib/mcp is not exported in package.json, so we resolve the
@@ -2694,6 +2695,18 @@ class PoolCompositeBackend {
     }
 
     const entry = poolEntries.get(activeId);
+
+    // Auto-save screenshots to file to avoid 20MB+ base64 responses
+    if (name === 'browser_take_screenshot' && !rawArguments?.filename) {
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const fmt = rawArguments?.type || 'png';
+      const dir = path.join(os.tmpdir(), 'playwright-pool-screenshots');
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const filename = path.join(dir, `screenshot-${ts}.${fmt}`);
+      rawArguments = { ...rawArguments, filename };
+      log(`Auto-saving screenshot to ${filename}`);
+    }
+
     return entry.backend.callTool(name, rawArguments, progress);
   }
 
