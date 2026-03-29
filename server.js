@@ -2696,26 +2696,24 @@ class PoolCompositeBackend {
 
     const entry = poolEntries.get(activeId);
 
-    // Auto-save screenshots to file AND strip base64 from response
-    // Playwright MCP returns image inline even with filename — causes 20MB+ context crashes
+    // Intercept screenshots: let upstream take it, then save to disk + strip base64
+    // Prevents 20MB+ context crashes from accumulated inline image data
     if (name === 'browser_take_screenshot') {
-      let autoSaved = false;
-      if (!rawArguments?.filename) {
-        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const fmt = rawArguments?.type || 'png';
-        const dir = path.join(os.tmpdir(), 'playwright-pool-screenshots');
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        const filename = path.join(dir, `screenshot-${ts}.${fmt}`);
-        rawArguments = { ...rawArguments, filename };
-        autoSaved = true;
-        log(`Auto-saving screenshot to ${filename}`);
-      }
       const result = await entry.backend.callTool(name, rawArguments, progress);
-      // Strip base64 image data from response — return only text/file path
       if (result?.content) {
-        const filePath = rawArguments.filename;
-        result.content = result.content.filter(c => c.type !== 'image');
-        if (result.content.length === 0 || !result.content.some(c => c.text?.includes(filePath))) {
+        const imageBlocks = result.content.filter(c => c.type === 'image');
+        if (imageBlocks.length > 0) {
+          const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const fmt = rawArguments?.type || 'png';
+          const dir = path.join(os.tmpdir(), 'playwright-pool-screenshots');
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          const filePath = rawArguments?.filename || path.join(dir, `screenshot-${ts}.${fmt}`);
+          // Save image to disk ourselves
+          const imgData = Buffer.from(imageBlocks[0].data, 'base64');
+          fs.writeFileSync(filePath, imgData);
+          log(`Screenshot saved to ${filePath} (${imgData.length} bytes)`);
+          // Strip ALL image blocks from response — return only text + file path
+          result.content = result.content.filter(c => c.type !== 'image');
           result.content.push({ type: 'text', text: `Screenshot saved to: ${filePath}` });
         }
       }
