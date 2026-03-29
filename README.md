@@ -77,6 +77,44 @@ Tested against Lighthouse CLI, Pa11y, and axe-core CLI on the same test pages:
 
 ---
 
+## Installation
+
+```bash
+npm install -g playwright-pool
+```
+
+Then install the Chromium browser binary:
+
+```bash
+npx playwright install chromium
+```
+
+---
+
+## Benchmarks
+
+| Benchmark | Violations Found | Detection Rate |
+|-----------|:---:|:---:|
+| W3C BAD (Before) | 74 | — |
+| Accessible University | 50 | 95.5% |
+
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for detailed methodology and per-rule breakdowns.
+
+---
+
+## Operating Modes
+
+| Mode | Auth | Headless | Best For |
+|------|:---:|:---:|---|
+| MCP Headed | Yes | No | Interactive AI agent sessions |
+| MCP Headless | Partial* | Yes | Automated pipelines |
+| CLI Headed | Yes | No | Manual testing, login setup |
+| CLI Headless | Partial* | Yes | CI/CD, batch audits |
+
+*Google OAuth requires headed mode. Other services work in headless.
+
+---
+
 ## Getting Started
 
 ### Quick install
@@ -473,6 +511,27 @@ Run WCAG 2.1 audits with axe-core integration, check focus order, validate tap t
 ---
 
 ## Configuration
+
+### Claude Code (.mcp.json)
+
+After installing globally, add to your `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "playwright-pool": {
+      "command": "playwright-pool-server",
+      "args": [],
+      "env": {
+        "GOLDEN_PROFILE": "~/.playwright-pool/golden-profile",
+        "POOL_DIR": "~/.playwright-pool/pool-contexts"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables
 
 | Environment Variable | Default | Description |
 |:---------------------|:--------|:------------|

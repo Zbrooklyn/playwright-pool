@@ -1698,7 +1698,7 @@ class PoolCompositeBackend {
 log(`Starting (session: ${SESSION_ID}, golden: ${GOLDEN_PROFILE})`);
 
 const backend = new PoolCompositeBackend();
-const server = createServer('playwright-pool', '3.0.0', backend, false);
+const server = createServer('playwright-pool', '1.0.0', backend, false);
 
 const transport = new mcpBundle.StdioServerTransport();
 await server.connect(transport);
