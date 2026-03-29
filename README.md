@@ -77,6 +77,44 @@ Tested against Lighthouse CLI, Pa11y, and axe-core CLI on the same test pages:
 
 ---
 
+## Installation
+
+```bash
+npm install -g playwright-pool
+```
+
+Then install the Chromium browser binary:
+
+```bash
+npx playwright install chromium
+```
+
+---
+
+## Benchmarks
+
+| Benchmark | Violations Found | Detection Rate |
+|-----------|:---:|:---:|
+| W3C BAD (Before) | 74 | — |
+| Accessible University | 50 | 95.5% |
+
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for detailed methodology and per-rule breakdowns.
+
+---
+
+## Operating Modes
+
+| Mode | Auth | Headless | Best For |
+|------|:---:|:---:|---|
+| MCP Headed | Yes | No | Interactive AI agent sessions |
+| MCP Headless | Partial* | Yes | Automated pipelines |
+| CLI Headed | Yes | No | Manual testing, login setup |
+| CLI Headless | Partial* | Yes | CI/CD, batch audits |
+
+*Google OAuth requires headed mode. Other services work in headless.
+
+---
+
 ## Getting Started
 
 ### Quick install
@@ -474,6 +512,27 @@ Run WCAG 2.1 audits with axe-core integration, check focus order, validate tap t
 
 ## Configuration
 
+### Claude Code (.mcp.json)
+
+After installing globally, add to your `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "playwright-pool": {
+      "command": "playwright-pool-server",
+      "args": [],
+      "env": {
+        "GOLDEN_PROFILE": "~/.playwright-pool/golden-profile",
+        "POOL_DIR": "~/.playwright-pool/pool-contexts"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables
+
 | Environment Variable | Default | Description |
 |:---------------------|:--------|:------------|
 | `GOLDEN_PROFILE` | `~/.playwright-pool/golden-profile` | Path to golden Chromium profile with saved logins |
@@ -521,6 +580,29 @@ Yes. The `playwright-pool` CLI provides 42 commands for standalone browser autom
 ### Is this production-ready?
 
 Playwright Pool is actively used in production for UI auditing workflows. It has been tested across 210 browser audit scenarios with 100% accuracy on 80 planted UI bugs.
+
+---
+
+## Known Limitations
+
+### Golden profile auth requires headed mode for Google services
+
+The golden profile auth overlay copies Chromium cookie and login data files into fresh browser contexts. This works correctly at the filesystem level in both headed and headless mode. However, **Google OAuth specifically detects and blocks headless Chromium sessions** -- even with valid cookies from a headed login, Google's anti-bot systems reject the session when headless automation signals are present.
+
+**What this means in practice:**
+
+- **MCP server (`pool_launch`)**: Always launches in headed mode (`headless: false`). Auth works correctly. No action needed.
+- **CLI commands**: Default to headless mode. Google-authenticated pages will show login prompts even with a valid golden profile. Use `--headed` flag to force headed mode when accessing Google services.
+- **Non-Google services**: Most other services (Cloudflare, GitHub, etc.) accept cookie-based auth in headless mode without issue. The limitation is specific to Google's bot detection.
+- **Standalone audit tools** (`workflow_audit_page`, `workflow_inspect`): These fall back to unauthenticated headless browsers when no pool context is active. They cannot access authenticated pages in this mode.
+
+**Workaround:** For CLI operations that need Google auth, always pass `--headed`:
+
+```bash
+npx playwright-pool navigate --url https://mail.google.com --headed
+```
+
+This is a Google-side restriction, not a Playwright or Playwright Pool bug. There is no code fix -- Google intentionally blocks headless browsers from using saved sessions.
 
 ---
 
