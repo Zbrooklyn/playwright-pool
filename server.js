@@ -2696,15 +2696,30 @@ class PoolCompositeBackend {
 
     const entry = poolEntries.get(activeId);
 
-    // Auto-save screenshots to file to avoid 20MB+ base64 responses
-    if (name === 'browser_take_screenshot' && !rawArguments?.filename) {
-      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const fmt = rawArguments?.type || 'png';
-      const dir = path.join(os.tmpdir(), 'playwright-pool-screenshots');
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const filename = path.join(dir, `screenshot-${ts}.${fmt}`);
-      rawArguments = { ...rawArguments, filename };
-      log(`Auto-saving screenshot to ${filename}`);
+    // Auto-save screenshots to file AND strip base64 from response
+    // Playwright MCP returns image inline even with filename — causes 20MB+ context crashes
+    if (name === 'browser_take_screenshot') {
+      let autoSaved = false;
+      if (!rawArguments?.filename) {
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const fmt = rawArguments?.type || 'png';
+        const dir = path.join(os.tmpdir(), 'playwright-pool-screenshots');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const filename = path.join(dir, `screenshot-${ts}.${fmt}`);
+        rawArguments = { ...rawArguments, filename };
+        autoSaved = true;
+        log(`Auto-saving screenshot to ${filename}`);
+      }
+      const result = await entry.backend.callTool(name, rawArguments, progress);
+      // Strip base64 image data from response — return only text/file path
+      if (result?.content) {
+        const filePath = rawArguments.filename;
+        result.content = result.content.filter(c => c.type !== 'image');
+        if (result.content.length === 0 || !result.content.some(c => c.text?.includes(filePath))) {
+          result.content.push({ type: 'text', text: `Screenshot saved to: ${filePath}` });
+        }
+      }
+      return result;
     }
 
     return entry.backend.callTool(name, rawArguments, progress);
