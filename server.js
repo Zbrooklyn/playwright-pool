@@ -196,7 +196,6 @@ const poolToolSchemas = [
       height: mcpBundle.z.number().optional().describe('Viewport height (default: 800)'),
       label: mcpBundle.z.string().optional().describe('Optional label (e.g., "stripe", "cloudflare")'),
       device: mcpBundle.z.string().optional().describe('Device preset for emulation (e.g., "iPhone 14", "Pixel 7", "iPad Pro 11"). Sets viewport, userAgent, deviceScaleFactor, isMobile, hasTouch. Overrides width/height. Window mode only.'),
-      freeResize: mcpBundle.z.boolean().optional().describe('When true, viewport follows the browser window size (like a normal browser). Allows free resizing. Default: false (fixed viewport).'),
     }),
     type: 'input',
   },
@@ -1227,9 +1226,7 @@ async function handlePoolLaunch(params) {
     // about:blank page that Chromium opens automatically with persistent contexts.
     const existingPages = tabContext.pages();
     const page = await tabContext.newPage();
-    if (!params.freeResize) {
-      await page.setViewportSize({ width: vw, height: vh });
-    }
+    await page.setViewportSize({ width: vw, height: vh });
 
     // Close the initial blank page if this is the first tab launch
     if (existingPages.length === 1 && existingPages[0].url() === 'about:blank') {
@@ -1259,7 +1256,7 @@ async function handlePoolLaunch(params) {
     // Build context options, merging device preset if provided
     const contextLaunchOptions = {
       headless: false,
-      viewport: params.freeResize ? null : { width: vw, height: vh },
+      viewport: { width: vw, height: vh },
       args: [
         '--disable-blink-features=AutomationControlled',
         `--remote-debugging-port=${cdpPort}`,
@@ -1289,8 +1286,7 @@ async function handlePoolLaunch(params) {
   activeId = id;
 
   const deviceSuffix = params.device ? ` [device: ${params.device}]` : '';
-  const resizeSuffix = params.freeResize ? ' [free-resize]' : '';
-  log(`${mode === 'tab' ? 'Tab' : 'Window'} "${id}" created (${params.freeResize ? 'free-resize' : `${vw}x${vh}`}${deviceSuffix}${resizeSuffix})`);
+  log(`${mode === 'tab' ? 'Tab' : 'Window'} "${id}" created (${vw}x${vh}${deviceSuffix})`);
   return {
     content: [{
       type: 'text',
