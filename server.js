@@ -1672,7 +1672,10 @@ class PoolCompositeBackend {
           const fmt = rawArguments?.type || 'png';
           const dir = path.join(os.tmpdir(), 'playwright-pool-screenshots');
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          const filePath = rawArguments?.filename || path.join(dir, `screenshot-${ts}.${fmt}`);
+          const userFile = rawArguments?.filename;
+          const filePath = userFile
+            ? (path.isAbsolute(userFile) ? userFile : path.join(dir, userFile))
+            : path.join(dir, `screenshot-${ts}.${fmt}`);
           // Save image to disk ourselves
           const imgData = Buffer.from(imageBlocks[0].data, 'base64');
           fs.writeFileSync(filePath, imgData);
