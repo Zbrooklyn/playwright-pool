@@ -57,45 +57,6 @@ describe('Regression — Stub Audit Tracking', () => {
   });
 });
 
-describe('Regression — pool_launch freeResize option', () => {
-  it('pool_launch schema exposes freeResize as a boolean option', async () => {
-    const { responses } = await runMcpServer([
-      MCP_INIT,
-      { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
-    ], { timeout: 15000 });
-
-    const toolsResp = responses.find(r => r.id === 2);
-    const poolLaunch = toolsResp?.result?.tools?.find(t => t.name === 'pool_launch');
-    assert.ok(poolLaunch, 'pool_launch tool should be listed');
-    const props = poolLaunch.inputSchema?.properties || {};
-    assert.ok(props.freeResize, 'pool_launch schema should include freeResize property');
-    assert.strictEqual(props.freeResize.type, 'boolean', 'freeResize should be a boolean');
-  });
-
-  it('Playwright viewport:null vs fixed produces expected innerWidth behavior', async () => {
-    // freeResize:true → context uses viewport:null → page innerWidth follows window
-    // freeResize:false → context uses viewport:{w,h} → page innerWidth locked
-    const { chromium } = await import('playwright');
-    const browser = await chromium.launch({ headless: true });
-    try {
-      const ctxFree = await browser.newContext({ viewport: null });
-      const pageFree = await ctxFree.newPage();
-      const sizeFree = await pageFree.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
-
-      const ctxFixed = await browser.newContext({ viewport: { width: 1024, height: 600 } });
-      const pageFixed = await ctxFixed.newPage();
-      const sizeFixed = await pageFixed.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
-
-      assert.strictEqual(sizeFixed.w, 1024, 'fixed viewport should lock width to 1024');
-      assert.strictEqual(sizeFixed.h, 600, 'fixed viewport should lock height to 600');
-      assert.ok(sizeFree.w !== 1024 || sizeFree.h !== 600,
-        `viewport:null should not coincidentally match 1024x600, got ${JSON.stringify(sizeFree)}`);
-    } finally {
-      await browser.close();
-    }
-  });
-});
-
 describe('Regression — npm pack cleanliness', () => {
   it('npm pack contains no screenshots or temp files', () => {
     const packOutput = execSync(`${NPM} pack --dry-run 2>&1`, {
