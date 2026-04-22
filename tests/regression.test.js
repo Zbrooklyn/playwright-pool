@@ -47,16 +47,13 @@ describe('Regression — Screenshot Stripping', () => {
 });
 
 describe('Regression — Stub Audit Tracking', () => {
-  it('audit list marks known stubs with [-]', async () => {
+  it('audit list renders with markers and implemented handlers', async () => {
     const { stdout } = await runCli(['audit', 'list']);
-    // On master, 4 stubs remain: loading_states, scroll_behavior, print_layout, computed_styles
-    const knownStubs = ['loading_states', 'scroll_behavior', 'print_layout', 'computed_styles'];
-    for (const stub of knownStubs) {
-      assert.ok(stdout.includes(`[-] ${stub}`), `Expected stub marker for ${stub}`);
-    }
-    // Ensure implemented audits are marked [+]
+    // Stable removes stubs; master keeps 4. Either way, core audits must be implemented.
     assert.ok(stdout.includes('[+] accessibility'), 'accessibility should be implemented');
     assert.ok(stdout.includes('[+] meta'), 'meta should be implemented');
+    assert.ok(stdout.includes('[+] color_contrast'), 'color_contrast should be implemented');
+    assert.ok(stdout.includes('Legend:'), 'Legend should be present');
   });
 });
 
