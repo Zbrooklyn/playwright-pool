@@ -1,14 +1,14 @@
 # Playwright Pool — Handoff
 
-**As of:** 2026-04-21
+**As of:** 2026-04-22
 **Current branch:** `stable`
-**Version:** `1.0.0` (in package.json, not yet published)
+**Version:** `v4.2.1` (tagged on GitHub — NOT published to npm; internal-first release)
 
 ---
 
 ## Current State (One Line)
 
-**Ready for `npm publish` — all code work done, all tests passing, merge conflicts resolved. Awaiting CEO go-ahead to push to npm registry.**
+**v4.2.1 tagged and pushed to GitHub. Cold-install verified end-to-end. Globally installed via `npm install -g git+https://github.com/zbrooklyn-claude-labs/playwright-pool.git#v4.2.1`. Other agents should use this same install command.**
 
 ---
 
@@ -35,7 +35,7 @@
 - `docs/BENCHMARKS.md` — W3C BAD scores, AU 95.5% detection
 - `docs/PROJECT-STATUS.md` — comprehensive inventory
 - `docs/MILESTONES.md` — milestone tracking
-- `CHANGELOG.md` — v1.0.0 release notes
+- `CHANGELOG.md` — v4.2.1 release notes
 - `README.md` — installation, benchmarks, 4-mode matrix, Known Limitations
 
 ### Packaging
@@ -59,7 +59,7 @@ Three servers configured in workspace `.mcp.json`:
 cd projects/playwright-pool
 npm pack && npm install -g playwright-pool-1.0.0.tgz && rm playwright-pool-1.0.0.tgz
 npm publish
-git tag v1.0.0
+git tag v4.2.1
 git push origin stable --tags
 ```
 
