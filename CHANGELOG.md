@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.2.1 — 2026-04-22
+
+### Fixed
+- **Pin `playwright` to `~1.58.0`** (was `^1.58.0`). Playwright 1.59.0 removed the internal `lib/mcp/browser/` modules that `server.js` requires. Fresh installs of v4.2.0 picked up 1.59.x and crashed at startup. Caught during cold-install verification — added to release checklist.
+
 ## 4.2.0 — 2026-04-22
 
 First documented release after internal v4.x iterations. v2.0.0 through v4.1.0 existed only in commit messages and were never tagged or formally released; this is the first release with proper versioning, documentation, and an automated test suite.
