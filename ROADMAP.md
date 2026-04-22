@@ -1,6 +1,8 @@
 # Playwright Pool — Roadmap
 
-## Current State (v4.0.0)
+## Current State (v4.2.0)
+
+First tagged release. v2.0.0–v4.1.0 lived in commit messages only — never tagged or released. See `CHANGELOG.md` for v4.2.0 release notes.
 
 ### Shipped
 
@@ -14,8 +16,9 @@
 | **Total MCP tools** | **67** | |
 
 ### Accuracy
-- 100% on 80 planted bugs across 5 test pages (easy/medium/hard/nuanced/interaction)
-- Journey: 78% → 89% → 100% through autoresearch iteration
+- W3C BAD: 74 violations across 13 rules (real-world site)
+- Accessible University: 21/22 known barriers detected (95.5%, real-world site)
+- 100% on 80 planted bugs across internal test pages — note: bugs were authored alongside the detectors, so this is an internal regression metric, not a comparable industry score
 
 ### Infrastructure
 - Benchmark tool with smart matrix, Welch's t-test, regression detection

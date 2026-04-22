@@ -1,6 +1,6 @@
 {
   "name": "playwright-pool",
-  "version": "1.0.0",
+  "version": "4.2.0",
   "description": "MCP server and CLI for dynamic Playwright browser pool management with golden profile authentication, 75 MCP tools, 42 CLI commands, 28 built-in UI audit tools, 143 device presets, and compact snapshots for accessibility, performance, and visual regression testing",
   "type": "module",
   "bin": {
@@ -40,12 +40,12 @@
     "automation",
     "testing"
   ],
-  "homepage": "https://github.com/Zbrooklyn/playwright-pool",
+  "homepage": "https://github.com/zbrooklyn-claude-labs/playwright-pool",
   "author": "Edward Shamosh (https://github.com/Zbrooklyn)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Zbrooklyn/playwright-pool.git"
+    "url": "https://github.com/zbrooklyn-claude-labs/playwright-pool.git"
   },
   "engines": {
     "node": ">=18.0.0"

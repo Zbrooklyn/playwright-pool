@@ -1,28 +1,50 @@
 # Changelog
 
-## 1.0.0 — First Public Release
+## 4.2.0 — 2026-04-22
 
-### Features
-- **75 MCP tools** — pool management, browser automation, 28 audit tools, utility tools
-- **42 CLI commands** — full parity with MCP tools, plus standalone audit and screenshot commands
-- **35 WCAG accessibility rules** — 95.5% detection rate on Accessible University benchmark
-- **Golden profile authentication** — share a single login across unlimited browser instances
-- **Vision model integration** — structured prompts for catching what code can't (color-only info, images of text)
-- **143 device presets** — test across mobile, tablet, desktop configurations
-- **Screenshot auto-save** — images saved to disk, base64 stripped from MCP responses to prevent context crashes
-- **Compact snapshots** — 90% fewer tokens than full browser snapshots
+First documented release after internal v4.x iterations. v2.0.0 through v4.1.0 existed only in commit messages and were never tagged or formally released; this is the first release with proper versioning, documentation, and an automated test suite.
 
-### Architecture
-- Single audit engine (`audit.js`) shared across CLI, MCP server, and MCP tools — bug fixes apply everywhere
-- Auth overlay pattern (not full profile copy) prevents Chromium cache/GPU crashes
-- Template caching — first launch ~17s, subsequent launches <2s
-- UUID session isolation — concurrent MCP servers never collide
+### What's in 4.2.0
 
-### Benchmarks
+**Code consolidation**
+- Audit logic consolidated into `cli-commands/audit.js` as the single source of truth (`AUDIT_HANDLERS` export). `audit-tools-b.js` and `server.js` now delegate to it. Removed ~2,850 lines of duplicated audit logic across the three files.
+
+**Screenshot handling**
+- Screenshots auto-save to `%TEMP%/playwright-pool-screenshots/` and base64 image data is stripped from MCP responses. Prevents context-window crashes when an agent takes many screenshots in one session.
+- Honor absolute paths in screenshot `filename` arg; relative paths join with the screenshots dir.
+
+**Stable branch**
+- Removed 4 audit stubs (`loading_states`, `print_layout`, `scroll_behavior`, `computed_styles`) from the `stable` branch. They remain on `master` for development.
+
+**Documentation**
+- New: `HANDOFF.md`, `PROJECT.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `docs/BENCHMARKS.md`, `docs/BRANCHING.md`.
+
+**Testing**
+- 34 automated tests across three tiers: smoke, regression, unit. Run via `npm test`.
+
+### Carried over from earlier internal versions
+
+- 75 MCP tools (pool management, browser automation, 28 audits, utilities)
+- 42 CLI commands (parity with MCP tools)
+- Golden profile authentication via auth-file overlay (not full profile copy)
+- Vision-model audit pipeline with structured prompt
+- 143 device presets
+- Compact accessibility snapshots (~90% fewer tokens than full snapshot)
+
+### Benchmarks (this release)
+
 - W3C BAD: 74 violations detected across 13 rules
-- Accessible University: 95.5% detection (21/22 known barriers)
-- Package size: ~150KB (24 files, 1 production dependency)
+- Accessible University: 21 of 22 known barriers detected (95.5%)
+- Package size: ~143 kB, 30 files, 1 production dependency
 
 ### Known Limitations
-- Google OAuth requires headed mode (`headless: false`) — Google blocks headless Chromium sessions
-- Non-Google services work fine in headless mode
+
+- Google OAuth requires headed mode. Google detects and blocks headless Chromium sessions even with valid cookies; non-Google services work in headless mode.
+- Single-file `server.js` (~67 kB). Will be split if/when contributor friction warrants it.
+
+### Distribution
+
+This release is **not published to the npm registry**. Install via git tag:
+```
+npm install git+https://github.com/zbrooklyn-claude-labs/playwright-pool.git#v4.2.0
+```
