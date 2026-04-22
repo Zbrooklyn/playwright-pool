@@ -83,6 +83,37 @@ describe('Regression — npm pack cleanliness', () => {
   });
 });
 
+describe('Regression — Playwright internal MCP modules required by server.js', () => {
+  // server.js depends on internal playwright paths not exported in package.json.
+  // This test fails loudly if any future Playwright upgrade drops or renames them,
+  // so we catch it in CI/local tests instead of at fresh-install time.
+  // See BRANCHING.md: "internal-API deps must be pinned with ~ not ^".
+  it('all 6 internal module paths server.js requires exist in installed playwright', async () => {
+    const { createRequire } = await import('module');
+    const require_ = createRequire(import.meta.url);
+    const pwDir = path.dirname(require_.resolve('playwright'));
+    const mcpDir = path.join(pwDir, 'lib', 'mcp');
+
+    const requiredPaths = [
+      path.join(mcpDir, 'browser', 'browserServerBackend.js'),
+      path.join(mcpDir, 'browser', 'config.js'),
+      path.join(mcpDir, 'browser', 'tools.js'),
+      path.join(mcpDir, 'sdk', 'tool.js'),
+      path.join(mcpDir, 'sdk', 'server.js'),
+    ];
+
+    for (const p of requiredPaths) {
+      assert.ok(fs.existsSync(p), `Missing required Playwright internal module: ${p}. A Playwright upgrade probably removed it. Pin playwright with ~ in package.json.`);
+    }
+
+    // Verify the playwright-core module path too
+    assert.doesNotThrow(
+      () => require_.resolve('playwright-core/lib/mcpBundle'),
+      'playwright-core/lib/mcpBundle should resolve'
+    );
+  });
+});
+
 describe('Regression — SSL handling', () => {
   it('CLI handles HTTPS sites without certificate errors', async () => {
     const tmpFile = path.join(os.tmpdir(), 'ssl-test-' + Date.now() + '.png');

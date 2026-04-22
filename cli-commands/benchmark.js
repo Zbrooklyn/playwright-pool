@@ -34,7 +34,7 @@ const CLI_PATH = path.join(__dirname, '..', 'cli.js');
 const SITES = [
   { name: 'trivial', url: 'https://example.com' },
   { name: 'static', url: 'https://developer.mozilla.org/en-US/docs/Web/HTML' },
-  { name: 'spa', url: 'https://github.com/Zbrooklyn/playwright-pool' },
+  { name: 'spa', url: 'https://github.com/zbrooklyn-claude-labs/playwright-pool' },
   { name: 'heavy', url: 'https://www.wikipedia.org' },
   { name: 'complex', url: 'https://news.ycombinator.com' },
 ];

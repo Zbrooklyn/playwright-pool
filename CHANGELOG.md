@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.2.2 — 2026-04-22
+
+### Added
+- **Regression test for Playwright internal MCP modules.** Checks that `playwright/lib/mcp/browser/browserServerBackend.js` (and 4 other internal paths `server.js` requires) exist in the installed Playwright. Any future Playwright upgrade that drops them now fails in `npm test`, not at fresh-install time.
+- **`docs/BRANCHING.md` → Dependency pinning policy** section. Documents why `playwright` uses `~` not `^` and the rule for future deps: `~` for anything where we touch internal APIs.
+- **`docs/BRANCHING.md` → Cold install release checklist.** `npm uninstall -g && npm install -g git+url#sha` before every tag.
+
+### Changed
+- **Removed unused devDependencies:** `@axe-core/cli`, `lighthouse`, `pa11y`. None were imported anywhere in the codebase; `audit.js` inlines its own logic. Clean install is now 2 packages instead of 3.
+- **Updated stale `Zbrooklyn/playwright-pool` URLs to `zbrooklyn-claude-labs/playwright-pool`** across README, CONTRIBUTING, and the benchmark `spa` test URL. GitHub was redirecting, but canonical is better.
+
 ## 4.2.1 — 2026-04-22
 
 ### Fixed

@@ -53,6 +53,26 @@ Pre-release tags (`-beta.1`, `-rc.1`) are allowed for testing risky changes befo
 
 Solo maintainer (Edward Shamosh / @Zbrooklyn) for now. If/when the project takes outside contributors, this section will be updated to describe the review process.
 
+## Dependency pinning policy
+
+Use **`~`** (patch-only updates) — NOT `^` (minor updates) — for any dependency where we touch internal/undocumented APIs.
+
+Currently that applies to:
+- `playwright` → `~1.58.0` (we require `playwright/lib/mcp/browser/*` which is not in its public API)
+
+Why: Playwright 1.59.0 removed `lib/mcp/browser/` and shipped it as a separate package. `^1.58.0` would let a fresh install pick 1.59.1 and crash. `~1.58.0` pins us to 1.58.x patches only.
+
+Standard rule: `^` is fine ONLY for deps whose public API we consume. If `server.js` or `audit.js` uses `require_(path.join(...))` against a module, that dep gets `~`, full stop.
+
+When upgrading a `~`-pinned dep (e.g., `playwright` 1.58 → 1.59), the `regression.test.js` check `Playwright internal MCP modules required by server.js` MUST pass against the new version before the pin is widened.
+
+## Cold install in the release checklist
+
+Before every tag on `stable`:
+1. `npm test` (34/34 pass)
+2. `npm pack --dry-run` (eyeball file list and version)
+3. **Cold install test:** `npm uninstall -g playwright-pool && npm install -g git+<url>#<current-HEAD-sha>` and verify `playwright-pool --version` + `playwright-pool-server` responds to MCP initialize. This is the step that caught the Playwright 1.59 break in v4.2.0.
+
 ## Anti-patterns
 
 - **Don't push directly to `stable`** without going through master first (except hotfixes per above)

@@ -120,7 +120,7 @@ See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for detailed methodology and per-ru
 ### Quick install
 
 ```bash
-git clone https://github.com/Zbrooklyn/playwright-pool.git
+git clone https://github.com/zbrooklyn-claude-labs/playwright-pool.git
 cd playwright-pool
 npm install
 npx playwright install chromium
@@ -630,6 +630,6 @@ Contributions are welcome. Please open an issue to discuss changes before submit
 
 Playwright Pool -- browser automation, UI auditing, and accessibility testing for Claude Code and MCP-compatible AI tools.
 
-[Report a Bug](https://github.com/Zbrooklyn/playwright-pool/issues) | [Request a Feature](https://github.com/Zbrooklyn/playwright-pool/issues) | [View Roadmap](ROADMAP.md)
+[Report a Bug](https://github.com/zbrooklyn-claude-labs/playwright-pool/issues) | [Request a Feature](https://github.com/zbrooklyn-claude-labs/playwright-pool/issues) | [View Roadmap](ROADMAP.md)
 
 </div>

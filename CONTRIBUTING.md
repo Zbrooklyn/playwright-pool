@@ -5,7 +5,7 @@ Thanks for your interest in contributing. This project is MIT-licensed and welco
 ## Quick Start
 
 ```bash
-git clone https://github.com/Zbrooklyn/playwright-pool.git
+git clone https://github.com/zbrooklyn-claude-labs/playwright-pool.git
 cd playwright-pool
 npm install
 npx playwright install chromium
