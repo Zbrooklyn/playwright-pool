@@ -3,6 +3,13 @@
 ## Overview
 MCP server that dynamically manages authenticated Playwright browser pools from a single golden profile.
 
+## Issue Log — `PROBLEMS.md`
+Every problem with this software or the agent-browser system (pool MCP, `browser` skill,
+profiles, `wmux` panel, CLI) gets logged in **`PROBLEMS.md`**. When any browser/pool issue
+bites — even transient or worked-around — append an entry (next `P-NN` id, newest on top)
+the moment it happens; never let it evaporate. Move fixed entries to Resolved, don't delete.
+Read it before debugging a browser issue — it's likely already in there.
+
 ## Branch Rules
 - `main` is the default branch
 - Feature work on feature branches, merge via PR
