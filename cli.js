@@ -361,13 +361,17 @@ function cmdConfig() {
   const serverPath = path.join(__dirname, 'server.js');
   const goldenPath = GOLDEN_PROFILE;
 
+  const profilesPath = path.join(POOL_BASE, 'profiles');
+
   // Unix-style paths
   const unixServer = serverPath.replace(/\\/g, '/');
   const unixGolden = goldenPath.replace(/\\/g, '/');
+  const unixProfiles = profilesPath.replace(/\\/g, '/');
 
   // Windows-style paths (with escaped backslashes for JSON)
   const winServer = serverPath.replace(/\//g, '\\');
   const winGolden = goldenPath.replace(/\//g, '\\');
+  const winProfiles = profilesPath.replace(/\//g, '\\');
 
   console.log('Add this to your .mcp.json (or Claude Code MCP config):');
   console.log();
@@ -379,6 +383,7 @@ function cmdConfig() {
         args: [unixServer],
         env: {
           GOLDEN_PROFILE: unixGolden,
+          PROFILES_DIR: unixProfiles,
         },
       },
     },
@@ -393,6 +398,7 @@ function cmdConfig() {
         args: [winServer],
         env: {
           GOLDEN_PROFILE: winGolden,
+          PROFILES_DIR: winProfiles,
         },
       },
     },
