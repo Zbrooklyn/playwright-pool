@@ -20,6 +20,8 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import readline from 'readline';
+import { spawn } from 'node:child_process';
+import { resolveProfile, listProfiles, profileAccounts } from './lib/profiles.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,8 +53,16 @@ switch (command) {
   case 'init':
     await cmdInit();
     break;
-  case 'login':
-    await cmdLogin(args[1]);
+  case 'login': {
+    const pIdx = args.indexOf('--profile');
+    const profileName = pIdx !== -1 ? args[pIdx + 1] : 'default';
+    // first positional (not the command, not the --profile value, not a flag)
+    const url = args.find((a, i) => i > 0 && !a.startsWith('--') && i !== pIdx + 1);
+    await cmdLogin(url, profileName);
+    break;
+  }
+  case 'profiles':
+    cmdProfiles();
     break;
   case 'config':
     cmdConfig();
@@ -183,12 +193,14 @@ Global Flags:
   --help, -h        Show this help message
 
 Setup:
-  init              Create ~/.playwright-pool/ directory structure
-  login [url]       Launch browser to log in (default: https://accounts.google.com)
-  config            Output .mcp.json snippet for Claude Code
-  status            Show pool directories and golden profile info
-  clean             Remove orphaned pool-context directories
-  install           Install Chromium for Playwright
+  init                          Create ~/.playwright-pool/ directory structure
+  login [url] [--profile NAME]  Open a RAW browser (no automation) to create/refresh a
+                                profile snapshot (default profile: "default")
+  profiles                      List credential profiles and their accounts
+  config                        Output .mcp.json snippet for Claude Code
+  status                        Show pool directories and profile info
+  clean                         Remove orphaned pool-context directories
+  install                       Install Chromium for Playwright
 
 Browser (persistent session):
   browser launch    Launch a persistent browser session
@@ -283,42 +295,64 @@ async function cmdInit() {
 
 // ─── login ────────────────────────────────────────────────────────
 
-async function cmdLogin(url) {
+async function cmdLogin(url, profileName = 'default') {
   const targetUrl = url || 'https://accounts.google.com';
+  const prof = resolveProfile(profileName);
+  fs.mkdirSync(prof.path, { recursive: true });
 
-  // Ensure the golden profile directory exists
-  if (!fs.existsSync(GOLDEN_PROFILE)) {
-    fs.mkdirSync(GOLDEN_PROFILE, { recursive: true });
-  }
+  // RAW spawn of the browser executable — NO automation, NO CDP, NO Playwright control.
+  // This is the durability fix: Google does not flag a human-driven browser the way it
+  // flags an automation-controlled one. LOGIN_ENGINE lets Task 6 pin the engine so the
+  // pool's read engine can decrypt the snapshot (Local State key compatibility).
+  const { chromium } = await import('playwright');
+  const exe = process.env.LOGIN_ENGINE || chromium.executablePath();
 
-  console.log(`Launching browser with golden profile...`);
-  console.log(`  Profile: ${GOLDEN_PROFILE}`);
+  console.log(`Raw login (NO automation) — profile "${prof.name}"`);
+  console.log(`  Browser: ${exe}`);
+  console.log(`  Profile: ${prof.path}`);
   console.log(`  URL:     ${targetUrl}`);
   console.log();
-  console.log('Log in to your accounts, then close the browser when done.');
+  console.log('Log in — add multiple Google accounts if you want; all are captured.');
+  console.log('Close the browser window when done.');
   console.log();
 
-  const { chromium } = await import('playwright');
+  const child = spawn(exe, [
+    `--user-data-dir=${prof.path}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    targetUrl,
+  ], { stdio: 'ignore', detached: false });
 
-  const context = await chromium.launchPersistentContext(GOLDEN_PROFILE, {
-    headless: false,
-    viewport: null,
-    args: ['--disable-blink-features=AutomationControlled'],
-  });
+  await new Promise((resolve) => child.on('exit', resolve));
+  writeActivationLog(prof);
+  console.log(`Profile "${prof.name}" snapshot saved. Credentials are ready.`);
+}
 
-  // Navigate the first page to the target URL
-  const pages = context.pages();
-  const page = pages.length > 0 ? pages[0] : await context.newPage();
-  await page.goto(targetUrl, { waitUntil: 'domcontentloaded' }).catch(() => {
-    // Ignore navigation errors (e.g. if user is already logged in and gets redirected)
-  });
+function writeActivationLog(prof) {
+  const md =
+    `# Profile activation — ${prof.name}\n\n` +
+    `- Path: ${prof.path}\n` +
+    `- Engine: raw spawn (no automation, no CDP)\n` +
+    `- NOT recorded: no passwords, cookies, tokens, or secrets were read or logged.\n`;
+  try { fs.writeFileSync(path.join(prof.path, 'activation.md'), md); } catch {}
+}
 
-  // Wait for the browser to be closed by the user
-  await new Promise((resolve) => {
-    context.on('close', resolve);
-  });
+// ─── profiles ─────────────────────────────────────────────────────
 
-  console.log('Golden profile saved. Your credentials are ready.');
+function cmdProfiles() {
+  const list = listProfiles();
+  if (!list.length) {
+    console.log('No profiles yet. Run: playwright-pool login --profile default');
+    return;
+  }
+  console.log('Credential profiles:');
+  for (const p of list) {
+    const accts = p.hasDefault ? profileAccounts(p.path) : [];
+    const state = p.hasDefault
+      ? (accts.length ? accts.join(', ') : 'ready (no account hint)')
+      : 'EMPTY — run login';
+    console.log(`  ${p.name.padEnd(16)} ${state}`);
+  }
 }
 
 // ─── config ───────────────────────────────────────────────────────
@@ -372,16 +406,22 @@ function cmdStatus() {
   console.log('='.repeat(40));
   console.log();
 
-  // Golden profile
-  const goldenExists = fs.existsSync(GOLDEN_PROFILE);
-  const goldenHasDefault = goldenExists && fs.existsSync(path.join(GOLDEN_PROFILE, 'Default'));
-  console.log(`Golden profile: ${GOLDEN_PROFILE}`);
-  if (!goldenExists) {
-    console.log('  Status: NOT FOUND — run `playwright-pool init` then `playwright-pool login`');
-  } else if (!goldenHasDefault) {
-    console.log('  Status: EXISTS but no Default/ directory — run `playwright-pool login`');
+  // Credential profiles
+  const profs = listProfiles();
+  console.log('Credential profiles:');
+  if (!profs.length) {
+    console.log('  NONE — run `playwright-pool login --profile default`');
   } else {
-    console.log('  Status: READY');
+    for (const p of profs) {
+      const accts = p.hasDefault ? profileAccounts(p.path) : [];
+      const state = !p.exists
+        ? 'NOT FOUND — run login'
+        : !p.hasDefault
+          ? 'EXISTS but no snapshot — run login'
+          : `READY${accts.length ? ` — ${accts.join(', ')}` : ''}`;
+      console.log(`  ${p.name.padEnd(16)} ${state}`);
+      console.log(`  ${' '.repeat(16)} ${p.path}`);
+    }
   }
   console.log();
 
