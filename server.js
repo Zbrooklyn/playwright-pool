@@ -16,6 +16,7 @@ import { chromium, devices } from 'playwright';
 import { createRequire } from 'module';
 import { getSchemas as getAuditBSchemas, handleAuditTool as handleAuditToolB, isAuditToolB } from './audit-tools-b.js';
 import { AUDIT_HANDLERS } from './cli-commands/audit.js';
+import { resolveProfile, profileAccounts } from './lib/profiles.js';
 
 // --- Resolve internal Playwright MCP modules ---
 // playwright/lib/mcp is not exported in package.json, so we resolve the
@@ -73,8 +74,8 @@ const LOCK_FILES = new Set([
   'SingletonLock', 'SingletonCookie', 'SingletonSocket', 'lockfile', 'LOCK',
 ]);
 
-// --- Template profile (created once per session) ---
-let templateDir = null;
+// --- Template profiles (one per named profile, created once per session) ---
+const templateDirs = new Map(); // profileName -> template dir
 
 function ensurePoolDir() {
   if (!fs.existsSync(POOL_DIR)) {
@@ -82,29 +83,34 @@ function ensurePoolDir() {
   }
 }
 
-async function ensureTemplate() {
-  if (templateDir && fs.existsSync(templateDir)) return;
+// Build (or reuse) a template profile for the given named profile, overlaying its
+// auth snapshot. Returns the resolved { name, path }.
+async function ensureTemplate(profileName = 'default') {
+  const prof = resolveProfile(profileName);
 
-  if (!fs.existsSync(GOLDEN_PROFILE)) {
+  if (templateDirs.has(prof.name) && fs.existsSync(templateDirs.get(prof.name))) {
+    return prof;
+  }
+
+  if (!fs.existsSync(path.join(prof.path, 'Default'))) {
     throw new Error(
-      `Golden profile not found at: ${GOLDEN_PROFILE}\n` +
-      'Run with GOLDEN_PROFILE env var pointing to a Chromium user-data-dir ' +
-      'that has your login sessions, or see README for setup instructions.'
+      `Profile "${prof.name}" has no snapshot at: ${prof.path}\n` +
+      `Run: playwright-pool login --profile ${prof.name}`
     );
   }
 
-  templateDir = path.join(POOL_DIR, `${SESSION_ID}-template`);
+  const dir = path.join(POOL_DIR, `${SESSION_ID}-${prof.name}-template`);
   ensurePoolDir();
 
-  // Create a fresh Chromium profile once (the only headless launch per session)
-  log('Creating template profile (one-time)...');
-  const tempCtx = await chromium.launchPersistentContext(templateDir, { headless: true });
+  // Create a fresh Chromium profile once (the only headless launch per profile)
+  log(`Creating template profile for "${prof.name}" (one-time)...`);
+  const tempCtx = await chromium.launchPersistentContext(dir, { headless: true });
   await tempCtx.close();
 
-  // Overlay auth files from golden profile
+  // Overlay auth files from the resolved profile snapshot
   for (const f of AUTH_FILES) {
-    const src = path.join(GOLDEN_PROFILE, f);
-    const dst = path.join(templateDir, f);
+    const src = path.join(prof.path, f);
+    const dst = path.join(dir, f);
     if (fs.existsSync(src)) {
       const stat = fs.statSync(src);
       if (stat.isDirectory()) {
@@ -115,11 +121,14 @@ async function ensureTemplate() {
       }
     }
   }
-  log('Template ready.');
+  templateDirs.set(prof.name, dir);
+  log(`Template ready for "${prof.name}".`);
+  return prof;
 }
 
-function createAuthProfile(destDir) {
-  log(`Copying template to ${path.basename(destDir)}...`);
+function createAuthProfile(destDir, profileName = 'default') {
+  const templateDir = templateDirs.get(profileName);
+  log(`Copying "${profileName}" template to ${path.basename(destDir)}...`);
   fs.cpSync(templateDir, destDir, {
     recursive: true,
     filter: (src) => !LOCK_FILES.has(path.basename(src)),
@@ -196,6 +205,7 @@ const poolToolSchemas = [
       height: mcpBundle.z.number().optional().describe('Viewport height (default: 800)'),
       label: mcpBundle.z.string().optional().describe('Optional label (e.g., "stripe", "cloudflare")'),
       device: mcpBundle.z.string().optional().describe('Device preset for emulation (e.g., "iPhone 14", "Pixel 7", "iPad Pro 11"). Sets viewport, userAgent, deviceScaleFactor, isMobile, hasTouch. Overrides width/height. Window mode only.'),
+      profileName: mcpBundle.z.string().optional().describe('Named credential profile to load (default: "default"). E.g. "business-A". Each profile is an isolated set of logins.'),
     }),
     type: 'input',
   },
@@ -1194,8 +1204,9 @@ async function handlePoolLaunch(params) {
   const vw = params.width || deviceOptions.viewport?.width || 1280;
   const vh = params.height || deviceOptions.viewport?.height || 800;
 
+  const profileName = params.profileName || 'default';
   ensurePoolDir();
-  await ensureTemplate();
+  const prof = await ensureTemplate(profileName);
 
   let browserContext;
   let contextDir = null;
@@ -1206,7 +1217,7 @@ async function handlePoolLaunch(params) {
     // Shared context for all tabs — one browser, one backend, many pages
     if (!tabContext) {
       tabContextDir = path.join(POOL_DIR, `${SESSION_ID}-tabs`);
-      createAuthProfile(tabContextDir);
+      createAuthProfile(tabContextDir, profileName);
       const cdpPort = await findFreePort();
       tabContext = await chromium.launchPersistentContext(tabContextDir, {
         headless: false,
@@ -1250,7 +1261,7 @@ async function handlePoolLaunch(params) {
   } else {
     // Window mode — separate persistent context with its own backend
     contextDir = path.join(POOL_DIR, id);
-    createAuthProfile(contextDir);
+    createAuthProfile(contextDir, profileName);
     const cdpPort = await findFreePort();
 
     // Build context options, merging device preset if provided
@@ -1287,10 +1298,12 @@ async function handlePoolLaunch(params) {
 
   const deviceSuffix = params.device ? ` [device: ${params.device}]` : '';
   log(`${mode === 'tab' ? 'Tab' : 'Window'} "${id}" created (${vw}x${vh}${deviceSuffix})`);
+  const accts = profileAccounts(prof.path);
+  const idLine = `Profile: ${prof.name}${accts.length ? ` — signed in as ${accts.join(', ')}` : ' (no account hint)'}`;
   return {
     content: [{
       type: 'text',
-      text: `Created ${mode} "${id}"${params.label ? ` [${params.label}]` : ''}${deviceSuffix} (${vw}x${vh})\nThis is now the active context. All browser_* tools will operate on it.`,
+      text: `${idLine}\nCreated ${mode} "${id}"${params.label ? ` [${params.label}]` : ''}${deviceSuffix} (${vw}x${vh})\nThis is now the active context. All browser_* tools will operate on it.`,
     }],
   };
 }
