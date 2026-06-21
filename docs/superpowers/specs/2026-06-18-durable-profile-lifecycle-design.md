@@ -124,6 +124,60 @@ login --profile business-A             pool_launch profileName:"business-A"
   → snapshot = files on disk             → echo: "loaded business-A as you@business-a.com"
 ```
 
+## Full journey (end-to-end) — the reliability target
+
+The mission is bigger than create/use/update: **people depend on AI to log into their web
+software, and it must be dependable and clean.** "Messy" is two tangled problems — **auth
+durability** (stay logged in) and **session reliability** (the browser doesn't wedge/zombie).
+The journey below accounts for both. Tag: `[built]` exists today, `[gap]` is future work.
+
+**Stage 0 — Onboard a new login.** A human logs in once by hand (raw browser, no automation).
+Capture in that single sitting: the **session** (cookies/tokens → profile snapshot) `[built]`,
+and the **credentials** — handled by the **browser's own built-in password manager**, which
+saves into `Login Data`/`Web Data` (already in the overlay) `[built]`. Decision: which profile
+(`default`/`business-A`) `[built]`.
+
+**Stage 1 — Open & use.** Pick a profile → overlay its snapshot → browser boots authenticated
+→ identity echo confirms account → AI works, no login act. `[built]`
+
+**Stage 2 — Verify auth is live.** Cheap freshness check before depending on it: are we really
+logged in, or did the session silently expire? Live → proceed; stale → Stage 3. Kills the
+"looks logged in but isn't" failure. `[gap]`
+
+**Stage 3 — Re-auth when stale.** Decision tree:
+- Bot-detecting site (Google/banks) → use the saved password but hand submit/MFA to the human
+  (notify), or the persistent-profile passkey path. Cannot fully automate — stated honestly.
+- Normal site → browser autofills saved username/password → submit. If TOTP is prompted, the
+  built-in manager **cannot** supply it (see decision below).
+- **Re-capture**: write the fresh session back into the profile snapshot → next time is reuse
+  again. This is the self-healing step — without it every expiry needs a human. `[gap]`
+
+**Stage 4 — Session reliability (pillar 2).** Detect a frozen/wedged/dead browser → recover
+(relaunch + re-overlay) instead of leaving a zombie; reap orphaned contexts. This is the
+modular-crane class of failure (mass-freeze, 18 zombie sessions). `[gap]`
+
+**Stage 5 — Maintenance.** Add another account, proactively refresh a login nearing expiry,
+rotate creds. (create/update `[built]`; proactive refresh `[gap]`.)
+
+**Cross-cutting (all stages):** identity & scoping (never cross profiles/accounts); blast
+radius (per-profile credential scoping; audit what the agent touched); human gates named
+explicitly (first login, passkey/push MFA, bot-detected re-login — everything else automatic);
+loud-not-silent state reporting.
+
+## Credential layer decision — browser built-in first, external vault deferred
+
+**Decision: the credential store is the browser's own built-in password manager**, not an
+external vault. Rationale:
+- It is **already captured** — `Login Data`/`Web Data` are in the overlay; zero new infra.
+- It is **naturally scoped per profile** — each profile only holds the logins saved in it.
+- Simplest thing that works (rule 14); no separate vault, no separate unlock secret.
+
+**The one capability it lacks: TOTP 2FA autofill.** The browser built-in does not store TOTP
+seeds, so it cannot auto-supply a 2FA code to skip an MFA prompt. An external vault (1Password
+— SDK/service-accounts/TOTP; or Bitwarden — CLI/self-host) is the **only** reason to add one,
+and only for that capability. Treated as an **optional later enhancement**, not a foundational
+dependency. Until then, TOTP-gated re-logins fall under the human-assisted branch of Stage 3.
+
 ## Error handling
 - Unknown profile name → clear error + offer to create; never silent-fallback to `default`.
 - Missing/empty snapshot (no `Default/`) → tell user to run `login --profile <name>`.
@@ -143,6 +197,10 @@ login --profile business-A             pool_launch profileName:"business-A"
 - No automated/headless login (Google blocks it; human-in-the-loop is the design).
 - No per-account selection at launch beyond Google's in-browser switcher.
 - No cloud sync / encryption-at-rest changes to snapshots.
+- **No external password manager in v1** — browser built-in only; 1Password/Bitwarden TOTP is a
+  deferred optional enhancement (Stage 3), not a foundational dependency.
+- Stages 2–4 (freshness check, automated re-auth, session-health recovery) are the **next**
+  build phase, scoped separately from this profile-lifecycle plan.
 
 ## Open validation items (resolved during the plan, not now)
 1. Does a raw-spawned **bundled Chromium** Google login avoid the flag? If yes → primary path.
